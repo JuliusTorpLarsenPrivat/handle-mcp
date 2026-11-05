@@ -17,9 +17,10 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from handle_mcp import beholdning, login
+from handle_mcp import beholdning, login, profil, samling
 from handle_mcp.butikker import ButikFejl, hent_butik
 from handle_mcp.data import til_json
+from handle_mcp.lokal import LokalFejl
 from handle_mcp.persondata import rens
 from handle_mcp.sammenlign import hent_tilbud, kandidater, rangeret, sammenlign
 from handle_mcp.vagt import VagtFejl
@@ -29,7 +30,9 @@ mcp = MCPServer(
     instructions=(
         "Dagligvarer fra nemlig.com og BilkaToGo. Du kan søge, se tilbud og opskrifter, "
         "sammenligne priser og ændre antal i kurven. Du kan også huske, hvad brugerne har "
-        "hjemme (beholdning), og tage højde for det i madplaner. Du kan ALDRIG bestille, betale eller vælge "
+        "hjemme (beholdning), og tage højde for det i madplaner. Til madplaner: læs vis_profil "
+        "(personer, ugebudget, præferencer, ting at undgå), vælg helst retter fra vis_opskrifter "
+        "(retter brugerne stoler på), og sig til, hvis prisen går over ugebudgettet. Du kan ALDRIG bestille, betale eller vælge "
         "leveringstid: det gør brugeren selv på butikkens hjemmeside. Spørg altid brugeren, "
         "før du ændrer kurven, og vis bagefter hvad der ligger i den."
     ),
@@ -142,7 +145,7 @@ async def vis_beholdning() -> Any:
     Brug den til madplaner og indkøbslister, så I ikke køber det, I allerede har."""
     try:
         return til_json(beholdning.hent())
-    except beholdning.BeholdningFejl as fejl:
+    except LokalFejl as fejl:
         raise ToolError(str(fejl)) from None
 
 
@@ -157,9 +160,68 @@ async def opdater_beholdning(
     Spørg, hvis det er uklart om noget er brugt op, og vis bagefter den nye beholdning."""
     try:
         varer, ukendte = beholdning.opdater(tilfoej, fjern, erstat_alt)
-    except beholdning.BeholdningFejl as fejl:
+    except LokalFejl as fejl:
         raise ToolError(str(fejl)) from None
     return til_json({"beholdning": varer, "ikke_fundet": ukendte})
+
+
+def _lokalt(kald, *args, **kwargs) -> Any:
+    """Kør noget mod de lokale filer og gør fejl forståelige for Claude."""
+    try:
+        return til_json(kald(*args, **kwargs))
+    except LokalFejl as fejl:
+        raise ToolError(str(fejl)) from None
+
+
+@mcp.tool(annotations=LOKAL_LAESER)
+async def vis_profil() -> Any:
+    """Husstandens profil: antal personer, ugebudget (kr., inkl. levering), præferencer og ting
+    at undgå (allergier, det I ikke kan lide). Læs den, før du laver madplan eller indkøbsliste."""
+    return _lokalt(profil.hent)
+
+
+@mcp.tool(annotations=LOKAL_SKRIVER)
+async def opdater_profil(
+    personer: int | None = None,
+    ugebudget_kr: float | None = None,
+    praeferencer: list[str] | None = None,
+    undgaa: list[str] | None = None,
+    note: str | None = None,
+) -> Any:
+    """Ret husstandens profil. Kun de felter du sender, ændres. Lister erstattes helt, så send
+    hele den nye liste (læs vis_profil først). ugebudget_kr=0 fjerner budgettet."""
+    return _lokalt(profil.opdater, personer, ugebudget_kr, praeferencer, undgaa, note)
+
+
+@mcp.tool(annotations=LOKAL_LAESER)
+async def vis_opskrifter(tag: str | None = None, soeg: str | None = None) -> Any:
+    """Jeres egen opskriftssamling: retter I kender og stoler på. Vælg retter herfra til
+    madplaner, før du foreslår nye. `tag` fx "hverdag" eller "vegetar", `soeg` et ord i navn,
+    ingredienser eller note."""
+    return _lokalt(samling.hent, tag, soeg)
+
+
+@mcp.tool(annotations=LOKAL_SKRIVER)
+async def gem_opskrift(
+    navn: str,
+    link: str | None = None,
+    ingredienser: list[str] | None = None,
+    personer: int | None = None,
+    tags: list[str] | None = None,
+    note: str | None = None,
+) -> Any:
+    """Gem en ret i jeres opskriftssamling. Findes navnet, erstattes den. Brug link til
+    nemlig-opskrifter (hent_opskrift kan så give varerne). Ingredienser er fri tekst, fx
+    "500 g hakket oksekød". Gem kun det, brugeren beder om."""
+    return _lokalt(samling.gem, navn, link, ingredienser, personer, tags, note)
+
+
+@mcp.tool(annotations=LOKAL_SKRIVER)
+async def fjern_opskrift(navn: str) -> Any:
+    """Fjern en ret fra opskriftssamlingen. Spørg brugeren først."""
+    if not _lokalt(samling.fjern, navn):
+        raise ToolError(f"Der er ingen opskrift, der hedder {navn!r}.")
+    return {"fjernet": navn}
 
 
 @mcp.tool(annotations=LAESER)
