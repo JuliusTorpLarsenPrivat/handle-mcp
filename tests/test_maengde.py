@@ -100,6 +100,21 @@ def test_raa_vare_frem_for_forarbejdet():
     assert valgt.id == "skiver"
 
 
+def test_roeget_og_blandet_koed_er_ikke_varen():
+    """Fundet live i ugeplan: røget kyllingebryst (pålæg) og okse- og grisekød for oksekød."""
+    roeget = kylling("roeget", 11, "100 g", "110", "Røget kyllingebryst")
+    stegt = kylling("stegt", 31, "200 g", "154", "Stegt kyllingebryst")
+    raa = kylling("raa", 65, "650 g", "100", "Kyllingebrystfilet")
+    (valgt, *_), _ = bedste("kyllingebryst", [roeget, stegt, raa], Maengde(400, "g"))
+    assert valgt.id == "raa"
+    blandet = Vare("x", "bl", "Hakket okse- og grisekød 8-12% fedt", Decimal(36), maengde="0.4 kg", enhed="kg")
+    okse = Vare("x", "okse", "Hakket oksekød 8-12% fedt", Decimal(45), maengde="0.4 kg", enhed="kg")
+    (valgt, *_), _ = bedste("hakket oksekød", [blandet, okse], Maengde(400, "g"))
+    assert valgt.id == "okse"
+    (valgt, *_), _ = bedste("hakket okse- og grisekød", [blandet, okse])  # søger man efter det, får man det
+    assert valgt.id == "bl"
+
+
 def test_skind_og_bundt_er_ikke_tilbehoer():
     """Fundet live: 3 x 180 g back loin (240 kr) slog 600 g økolaks m. skind (118 kr)."""
     loin = Vare("x", "loin", "Laks - back loin", Decimal("79.95"), maengde="180 g", enhed="kg")

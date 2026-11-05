@@ -144,16 +144,26 @@ FORARBEJDET = (
     "indbagt", "paneret", "panerede", "marineret", "faerdigret", "suppe", "sauce", "dressing",
     "snack", "nudler", "tops", "postej", "paalaeg", "skiver", "sandwich", "pizza", "burger",
     "nuggets", "pesto", "marmelade", "dip", "salat", "spread", "smoothie", "drik",
+    "roeget", "stegt", "stegte", "kogt", "kogte", "grillet", "grillede", "rullepoelse",
 )  # fmt: skip
+# Kødtyper: søger man efter én, er en vare med en anden kødtype i navnet en anden vare
+# (fundet live: "hakket oksekød" blev til "Hakket okse- og grisekød").
+DYR = ("okse", "grise", "svine", "kalv", "lam", "kylling", "kalkun", "and", "hjort", "vildsvin")
+
+
+def _dyr(ord_: set[str]) -> set[str]:
+    return {d for o in ord_ for d in DYR if o.startswith(d)}
 
 
 def er_forarbejdet(v: Vare, oensket: set[str]) -> bool:
-    """Har varen et 'forarbejdet'-ord, som brugeren ikke selv søgte efter?"""
-    for o in ord_i(v.navn):
+    """Er varen forarbejdet eller blandet på en måde, brugeren ikke selv søgte efter?"""
+    navn = ord_i(v.navn)
+    for o in navn:
         for f in FORARBEJDET:
             if o.endswith(f) and not any(f in s for s in oensket):
                 return True
-    return False
+    soegt = _dyr(oensket)
+    return bool(soegt and _dyr(navn) - soegt)
 
 
 # Ord efter "m."/"i" der beskriver varen selv, ikke tilbehør: "Laksefilet m. skind",
