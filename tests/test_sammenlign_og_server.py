@@ -1,3 +1,5 @@
+import pytest
+
 from decimal import Decimal
 
 from handle_mcp.data import Kurv, Vare
@@ -37,6 +39,38 @@ def test_hovedordet_staar_sidst():
     assert point("mælk", Vare("x", "2", "Skummetmælk 0,1%", Decimal(10))) == 1
     assert point("kyllingebryst", Vare("x", "3", "Kyllingebrystfilet", Decimal(10))) == 1
     assert point("mælk", Vare("x", "5", "Mælkesnitte", Decimal(10))) == 0.5
+
+
+@pytest.mark.parametrize(
+    "soegning, navn",
+    [  # fundet live i en madplantest: ordet står kun som smag eller tilbehør
+        ("fennikel", "Urtete m. fennikel, kamille og humle øko"),
+        ("timian", "Kartoffel- og porresuppe m. timian"),
+        ("hvidløg", "Baguette m. hvidløg"),
+        ("parmesan", "Salami snack (parmesan)"),
+        ("kokosmælk", "Karrysuppe m. kokosmælk"),
+        ("karry", "Boller i karry m. ris"),
+        ("persille", "Kartoffelsalat m. persille og purløg"),
+        ("feldsalat", "Iceberg salat"),
+    ],
+)
+def test_smag_og_tilbehoer_er_ikke_varen(soegning, navn):
+    assert point(soegning, Vare("x", "1", navn, Decimal(10))) == 0.5
+
+
+@pytest.mark.parametrize(
+    "soegning, navn",
+    [
+        ("kartofler", "Kartofler m. krydderurter"),
+        ("hakket oksekød", "Hakket oksekød m. 50% grønt"),
+        ("karry", "Karry (madras)"),
+        ("squash", "Squash"),
+        ("kyllingebryst", "Kyllingebrystfilet tilsat vand"),
+        ("mandler", "Saltede og ristede mandler"),
+    ],
+)
+def test_hoveddelen_er_stadig_varen(soegning, navn):
+    assert point(soegning, Vare("x", "1", navn, Decimal(10))) == 1
 
 
 def test_gratisvarer_og_andre_enheder_vaelges_ikke():

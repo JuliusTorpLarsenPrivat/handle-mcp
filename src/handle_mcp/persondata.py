@@ -40,7 +40,9 @@ PERSONFELTER = {
 }
 
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
-TELEFON = re.compile(r"(?<!\d)(?:\+45[ ]?)?(?:\d{2}[ ]?){3}\d{2}(?!\d)")
+# Et telefonnummer står for sig selv. Tal, der hænger sammen med bogstaver, '-', '/' eller '='
+# er id'er i links og slugs (fx .../opskrift/citronpasta-laks-98004249) og skal blive.
+TELEFON = re.compile(r"(?<![\w/=-])(?:\+45[ ]?)?(?:\d{2}[ ]?){3}\d{2}(?![\w/=-])")
 
 
 def rens(data: Any) -> Any:

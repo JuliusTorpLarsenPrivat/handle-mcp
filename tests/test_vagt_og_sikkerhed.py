@@ -86,3 +86,25 @@ def test_persondata_fjernes():
     assert renset["Lines"][0]["Id"] == "12345678"  # varenumre bliver
     assert "12 34 56 78" not in renset["Lines"][0]["note"]
     assert "a@b.dk" not in renset["Lines"][0]["note"]
+
+
+@pytest.mark.parametrize(
+    "tekst",
+    ["ring 12345678", "tlf: +45 12 34 56 78.", "Mobil 12 34 56 78, tak", "(12345678)"],
+)
+def test_telefonnumre_fjernes(tekst):
+    assert FJERNET in rens(tekst)
+
+
+@pytest.mark.parametrize(
+    "tekst",
+    [
+        "https://www.nemlig.com/maaltider/opskrift/citronpasta-laks-asparges-98004249",
+        "citronpasta-laks-asparges-98004249",
+        "?id=12345678&x=1",
+        "vare12345678",
+    ],
+)
+def test_id_i_links_bliver(tekst):
+    """Fundet live: opskriftslinks fra nemlig slutter på et 8-cifret id, som blev fjernet."""
+    assert rens(tekst) == tekst

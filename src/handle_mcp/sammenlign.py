@@ -56,18 +56,40 @@ def ord_point(oensket: str, har: str, sammensat: bool = True) -> float:
     if lang.startswith(kort):
         rest = lang[len(kort):]
         return 1.0 if rest in BOEJNINGER or rest.lstrip("e") in FORMER else 0.5
-    if sammensat and any(lang[: len(lang) - len(b)].endswith(kort) for b in BOEJNINGER if len(lang) - len(b) > len(kort)):
-        return 1.0
+    if any(lang[: len(lang) - len(b)].endswith(kort) for b in BOEJNINGER if len(lang) - len(b) > len(kort)):
+        if lang == oensket:  # 'salat' er ikke 'feldsalat': den generelle vare er ikke den ønskede
+            return 0.5
+        return 1.0 if sammensat else 0.0
     return 0.0
 
 
+# Det der står efter "m.", "med", "i", "til", "tilsat", en parentes eller et komma, er smag
+# eller tilbehør: "Urtete m. fennikel" er te, "Boller i karry" er boller.
+TILBEHOER = re.compile(r"\s(?:m\.|med|i|til|tilsat)\s|[(,]")
+
+
 def point(soegning: str, vare: Vare, sammensat: bool = True) -> float:
+    """Andelen af søgeordene, der passer med varen. Ord i varens hoveddel (og mærket) giver
+    fuldt point, ord i tilbehør eller mængde højst halvt."""
     oensket = ord_i(soegning)
     if not oensket:
         return 0.0
-    har = ord_i(" ".join(x for x in (vare.navn, vare.maerke, vare.maengde) if x))
-    fundet = sum(max((ord_point(o, h, sammensat) for h in har), default=0.0) for o in oensket)
-    return fundet / len(oensket)
+    hoved, _, tilbehoer = _del(vare.navn)
+    fuld = ord_i(hoved) | ord_i(vare.maerke or "")
+    halv = ord_i(tilbehoer) | ord_i(vare.maengde or "")
+
+    def bedste(o: str) -> float:
+        f = max((ord_point(o, h, sammensat) for h in fuld), default=0.0)
+        h = max((ord_point(o, x, sammensat) for x in halv), default=0.0)
+        return max(f, min(h, 0.5))
+
+    return sum(bedste(o) for o in oensket) / len(oensket)
+
+
+def _del(navn: str) -> tuple[str, str, str]:
+    """(hoveddel, skille, tilbehør) af et varenavn."""
+    m = TILBEHOER.search(navn.lower())
+    return (navn, "", "") if not m else (navn[: m.start()], m.group(), navn[m.end():])
 
 
 def rangeret(soegning: str, varer: list[Vare]) -> list[tuple[float, Vare]]:
