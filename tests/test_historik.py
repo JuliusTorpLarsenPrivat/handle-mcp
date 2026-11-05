@@ -80,6 +80,27 @@ def test_saesonvare_er_ikke_snart_tom():
     assert b["ikke_koebt_laenge"] and not b["snart_tom"]
 
 
+def test_flet_nye_kvitteringer_uden_dubletter():
+    a, b, c = kv("2026-10-01", ("MÆLK", 10, 0)), kv("2026-10-08", ("MÆLK", 10, 0)), kv("2026-10-15", ("SMØR", 20, 0))
+    assert historik.flet_kvitteringer([a, b]) == (2, 2)
+    assert historik.flet_kvitteringer([b, c, c]) == (1, 3)  # b kendes, c to gange i samme hentning
+    assert [k["tid"][:10] for k in historik.kvitteringer()] == ["2026-10-15", "2026-10-08", "2026-10-01"]
+
+
+@pytest.mark.parametrize(
+    "skidt",
+    [
+        # opdigtede numre i samme format som på kvitteringerne
+        {"tid": "2026-10-01T12:00:00Z", "total": 10, "varer": [{"navn": "PAN: 123456XXXXXX0000", "pris": 0, "rabat": 0}]},
+        {"tid": "2026-10-01T12:00:00Z", "total": 10, "varer": [], "note": "Medlemsnummer: 12345678"},
+        {"tid": "2026-10-01T12:00:00Z", "varer": []},  # mangler total
+    ],
+)
+def test_flet_afviser_persondata_og_ufuldstaendige(skidt):
+    with pytest.raises(LokalFejl):
+        historik.flet_kvitteringer([skidt])
+
+
 def test_ugyldig_andel():
     gem(kv("2026-10-01", ("MÆLK", 10, 0)))
     with pytest.raises(LokalFejl):

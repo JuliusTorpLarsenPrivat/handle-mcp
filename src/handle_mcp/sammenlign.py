@@ -29,7 +29,7 @@ from decimal import Decimal
 
 from handle_mcp.butikker import Butik, ButikFejl
 from handle_mcp.data import Vare
-from handle_mcp.maengde import Maengde, behov, pakker, pakkestoerrelse
+from handle_mcp.maengde import Maengde, behov, maengdetilbud, pakker, pakkestoerrelse, pris_for_antal
 
 ERSTAT = str.maketrans({"æ": "ae", "ø": "oe", "å": "aa", "é": "e"})
 SOEGEDYBDE = 50  # hits pr. vare og butik. 10 var for lidt: de billigste lå tit under top 10.
@@ -277,7 +277,16 @@ def antal_pakker(v: Vare, behov_: Maengde | None) -> int | None:
 
 def pris_for_behov(v: Vare, behov_: Maengde | None) -> Decimal | None:
     n = antal_pakker(v, behov_)
-    return v.pris * n if n else None
+    return pris_for_antal(v.pris, v.tilbud, n) if n else None
+
+
+def tilbud_tip(v: Vare, n: int) -> str | None:
+    """Et tip, når et mængdetilbud kræver flere, end der skal bruges: "Køb 2 for 150 kr (75 kr/stk)"."""
+    mt = maengdetilbud(v.tilbud)
+    if not mt or n % mt[0] == 0 or mt[1] >= v.pris * mt[0]:
+        return None
+    k = -(-n // mt[0]) * mt[0]  # næste hele antal i tilbuddet
+    return f"Mængdetilbud: køb {k} for {pris_for_antal(v.pris, v.tilbud, k):.2f} kr ({mt[1] / mt[0]:.2f} kr/stk) i stedet for {n}"
 
 
 # Kun vægt og rumfang: "kr/stk" kan være pr. tebrev i en æske, ikke pr. vare (fundet live).
@@ -315,7 +324,12 @@ class Linje:
 
     @property
     def beloeb(self) -> Decimal:
-        return self.valgt.pris * self.pakker * self.antal if self.valgt else Decimal(0)
+        """Med mængderabat: 2 pakker af "2 for 150 kr" koster 150, ikke 2 x normalprisen."""
+        return pris_for_antal(self.valgt.pris, self.valgt.tilbud, self.pakker * self.antal) if self.valgt else Decimal(0)
+
+    @property
+    def tip(self) -> str | None:
+        return tilbud_tip(self.valgt, self.pakker * self.antal) if self.valgt else None
 
 
 @dataclass

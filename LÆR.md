@@ -42,6 +42,8 @@ En gennemgang til dig, der vil forstå MCP, Python-projektet og GitHub, ikke kun
 | `src/handle_mcp/profil.py` | Personer, ugebudget, præferencer og ting at undgå. |
 | `src/handle_mcp/netvaerk.py` | Kører serveren over HTTP med adgangsnøgle (til en maskine, der altid er tændt). |
 | `src/handle_mcp/cli.py` | `login`, `logout`, `status`, `http-noegle` og `http` i terminalen. |
+| `scripts/livetest_varevalg.py` | Stor live-test af varevalget i begge butikker (kun søgning). |
+| `scripts/coop_hoest.py` + `.js` | Henter Coop-kvitteringer via browseren og fletter dem ind lokalt. |
 | `tests/` | Automatiske test. Kør `uv run pytest`. |
 | `pyproject.toml` | Projektets "varedeklaration": navn, version, hvilke pakker det bruger, og at kommandoen `handle-mcp` starter `server.py`. |
 

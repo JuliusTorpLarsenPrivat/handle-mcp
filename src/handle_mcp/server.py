@@ -23,7 +23,7 @@ from handle_mcp.data import til_json
 from handle_mcp.lokal import LokalFejl
 from handle_mcp.persondata import rens
 from handle_mcp.maengde import behov
-from handle_mcp.sammenlign import antal_pakker, er_oeko, hent_tilbud, kandidater, pris_for_behov, rangeret, sammenlign
+from handle_mcp.sammenlign import antal_pakker, er_oeko, hent_tilbud, kandidater, pris_for_behov, rangeret, sammenlign, tilbud_tip
 from handle_mcp.vagt import VagtFejl
 
 mcp = MCPServer(
@@ -86,7 +86,13 @@ async def soeg_varer(
         rent, behov_ = behov(tekst)
         varer = await kandidater(b, rent, await hent_tilbud(b))
         return [
-            {"vare": v, "pakker": antal_pakker(v, behov_), "pris_for_behov": pris_for_behov(v, behov_), "oeko": er_oeko(v)}
+            {
+                "vare": v,
+                "pakker": antal_pakker(v, behov_),
+                "pris_for_behov": pris_for_behov(v, behov_),
+                "oeko": er_oeko(v),
+                "tip": tilbud_tip(v, antal_pakker(v, behov_) or 1),
+            }
             for _, v in rangeret(rent, varer, behov_, oekologisk)[:antal]
         ]
 
@@ -154,6 +160,7 @@ async def sammenlign_liste(
                         "valgt": ln.valgt,
                         "pakker": ln.pakker,
                         "beloeb": ln.beloeb,
+                        "tip": ln.tip,
                         "sikker": ln.sikker,
                         "alternativer": [
                             {"vare": a, "pakker": antal_pakker(a, ln.behov) or 1, "oeko": er_oeko(a)} for a in ln.alternativer

@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass
+from decimal import Decimal
 
 # tal, evt. "N x" foran, og en enhed. "12 x 400 g", "1,50 kg", "0.5 l", "2 stk."
 MAENGDE = re.compile(r"(?:(\d+)\s*x\s*)?(\d+(?:[.,]\d+)?)\s*(kg|g|gr|l|ltr|dl|cl|ml|stk|bdt|bundt|pk|pakke|pakker|bakke|ps)\.?(?![a-zæøå])", re.I)
@@ -59,6 +60,29 @@ def pakkestoerrelse(*tekster: str | None, enhed: str) -> float | None:
             if m := ANTAL_X.search(t or ""):
                 return float(m.group(1))
     return None
+
+
+# Mængdetilbud, som butikkerne skriver dem: "3 for 85 kr", "Mix 2 stk. 35,-", "Mix 2 for 40,00".
+# Varens pris er normalprisen pr. stk; rabatten gælder kun, når man køber hele "pakker" af tilbuddet.
+MAENGDETILBUD = re.compile(r"^(?:mix\s+)?(\d+)\s*(?:stk\.?\s*)?(?:for\s*)?(\d+(?:[.,]\d+)?)\s*(?:kr|,-|$)", re.I)
+
+
+def maengdetilbud(tilbud: str | None) -> tuple[int, Decimal] | None:
+    """(antal, samlet pris) for et mængdetilbud, ellers None. "3 for 85 kr" → (3, 85)."""
+    if not tilbud or not (m := MAENGDETILBUD.match(tilbud.strip())):
+        return None
+    antal, pris = int(m.group(1)), Decimal(m.group(2).replace(",", "."))
+    return (antal, pris) if antal >= 2 and pris > 0 else None
+
+
+def pris_for_antal(pris: Decimal, tilbud: str | None, n: int) -> Decimal:
+    """Prisen for n stk, med mængderabat for hver hel gruppe: 3 stk af "2 for 150" (79,95/stk)
+    koster 150 + 79,95. Rabatten bruges kun, hvis den faktisk er billigere."""
+    mt = maengdetilbud(tilbud)
+    if not mt or mt[1] >= pris * mt[0]:
+        return pris * n
+    grupper, rest = divmod(n, mt[0])
+    return mt[1] * grupper + pris * rest
 
 
 def pakker(behov_: Maengde, stoerrelse: float) -> int | None:

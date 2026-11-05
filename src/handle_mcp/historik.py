@@ -79,6 +79,34 @@ def varenavn(navn: str) -> str:
     return re.sub(r"^\d+\s*x\s+", "", navn.strip(), flags=re.I).upper()
 
 
+def _noegle(k: dict) -> tuple:
+    return (k.get("tid"), round(float(k.get("total") or 0), 2), k.get("butik"))
+
+
+PERSONFELTER = re.compile(r"PAN:|Medlemsnummer|Kvitteringsnummer|Registrering|\d{6}X{4,}", re.I)
+
+
+def flet_kvitteringer(nye: list[dict], kilde: str = "coop_kvitteringer") -> tuple[int, int]:
+    """Læg nye kvitteringer til de gemte. Samme tidspunkt, total og butik er samme kvittering,
+    så det er sikkert at hente alt igen. Giver (antal nye, antal i alt).
+
+    Kvitteringer med kort- eller medlemsnumre afvises: de må aldrig gemmes."""
+    from handle_mcp.lokal import skriv
+
+    for k in nye:
+        if not {"tid", "total", "varer"} <= set(k) or not isinstance(k["varer"], list):
+            raise LokalFejl("En kvittering mangler tid, total eller varer.")
+        if PERSONFELTER.search(str(k)):
+            raise LokalFejl("En kvittering indeholder kort- eller medlemsnummer og bliver ikke gemt.")
+    data = laes(kilde)
+    gamle = data.get("kvitteringer", [])
+    kendte = {_noegle(k) for k in gamle}
+    tilfoejet = [k for k in nye if _noegle(k) not in kendte and not kendte.add(_noegle(k))]
+    alle = sorted(gamle + tilfoejet, key=lambda k: k["tid"], reverse=True)
+    skriv(kilde, {**data, "kvitteringer": alle})
+    return len(tilfoejet), len(alle)
+
+
 def kvitteringer() -> list[dict]:
     alle = []
     for kilde in KILDER:
