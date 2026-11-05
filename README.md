@@ -12,8 +12,8 @@ Kræver [uv](https://docs.astral.sh/uv/) og [Git](https://git-scm.com/download/w
 
 ```powershell
 # 1. Gem login (spørger om email og kode, tjekker dem og gemmer i Windows Credential Manager)
-uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.6.1 handle-mcp login nemlig
-uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.6.1 handle-mcp login bilka
+uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.7.0 handle-mcp login nemlig
+uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.7.0 handle-mcp login bilka
 ```
 
 2. Claude Desktop → Settings → Developer → Edit Config:
@@ -23,7 +23,7 @@ uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.6.1 handl
   "mcpServers": {
     "handle": {
       "command": "C:\\Users\\JuliusTorpLarsen\\.local\\bin\\uvx.exe",
-      "args": ["--from", "git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.6.1", "handle-mcp"]
+      "args": ["--from", "git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.7.0", "handle-mcp"]
     }
   }
 }
@@ -47,17 +47,18 @@ uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.6.1 handl
 | `opdater_beholdning` | **ja, kun den lokale liste** | Gem hvad I har hjemme, ret eller fjern varer |
 | `vis_opskrifter` | nej | Jeres egen samling af retter, I stoler på (søg på tag eller ord) |
 | `gem_opskrift` / `fjern_opskrift` | **ja, kun den lokale samling** | Gem eller fjern en ret |
+| `koebsmoenster` | nej | Basisvarer (hvor tit og hvornår sidst), favoritter, øko-andel og forbrug pr. uge ud fra gemte kvitteringer |
 | `vis_profil` | nej | Antal personer, ugebudget, præferencer og ting at undgå |
 | `opdater_profil` | **ja, kun den lokale profil** | Ret profilen |
 
-Beholdning, opskrifter og profil ligger som JSON-filer i `%LOCALAPPDATA%\handle-mcp\` på din egen computer og sendes aldrig til butikkerne.
+Beholdning, opskrifter, profil og kvitteringer ligger som JSON-filer i `%LOCALAPPDATA%\handle-mcp\` på din egen computer og sendes aldrig til butikkerne.
 
 ## Sikkerhed
 
 - Login ligger kun i styresystemets nøglering på din computer (eller i miljøvariabler).
 - Alle kald går gennem `vagt.py`, som kun tillader butikkernes egne adresser og afviser alt, der ligner bestilling, betaling eller valg af levering.
 - Navn, adresse, telefon og e-mail fjernes fra svarene, før Claude ser dem.
-- Lås altid installationen til en version (fx `@v0.6.1`), så koden ikke ændrer sig uden din viden.
+- Lås altid installationen til en version (fx `@v0.7.0`), så koden ikke ændrer sig uden din viden.
 
 ## Over netværket (HTTP)
 

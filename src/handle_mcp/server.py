@@ -17,7 +17,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from handle_mcp import beholdning, login, profil, samling
+from handle_mcp import beholdning, historik, login, profil, samling
 from handle_mcp.butikker import ButikFejl, hent_butik
 from handle_mcp.data import til_json
 from handle_mcp.lokal import LokalFejl
@@ -204,6 +204,17 @@ def _lokalt(kald, *args, **kwargs) -> Any:
         return til_json(kald(*args, **kwargs))
     except LokalFejl as fejl:
         raise ToolError(str(fejl)) from None
+
+
+@mcp.tool(annotations=LOKAL_LAESER)
+async def koebsmoenster(andel_af_indkoeb: float = 1.0) -> Any:
+    """Hvad husstanden faktisk køber, ud fra gemte kvitteringer (i dag fra Coop/Brugsen):
+    basisvarer med typisk interval og dage siden sidst (`snart_tom`), favoritter pr. madkategori,
+    hvad pengene går til, øko-andel og forbrug pr. uge. `andel_af_indkoeb` er hvor stor en del af
+    indkøbene kvitteringerne dækker (se profilens note, fx 0.7), så det samlede budget kan skønnes.
+    Brug det til madplaner (retter med det, de kan lide), til at foreslå basisvarer der snart er
+    tomme, og til at sammenligne ugebudgettet med det faktiske forbrug."""
+    return _lokalt(historik.moenster, andel_af_indkoeb)
 
 
 @mcp.tool(annotations=LOKAL_LAESER)

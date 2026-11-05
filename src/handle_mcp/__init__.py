@@ -1,3 +1,3 @@
 """handle-mcp: dagligvarer fra nemlig.com og BilkaToGo som MCP-server. Du betaler altid selv."""
 
-__version__ = "0.6.1"
+__version__ = "0.7.0"
