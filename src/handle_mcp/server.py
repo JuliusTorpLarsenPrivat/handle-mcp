@@ -17,7 +17,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from handle_mcp import login
+from handle_mcp import beholdning, login
 from handle_mcp.butikker import ButikFejl, hent_butik
 from handle_mcp.data import til_json
 from handle_mcp.persondata import rens
@@ -28,7 +28,8 @@ mcp = MCPServer(
     name="handle",
     instructions=(
         "Dagligvarer fra nemlig.com og BilkaToGo. Du kan søge, se tilbud og opskrifter, "
-        "sammenligne priser og ændre antal i kurven. Du kan ALDRIG bestille, betale eller vælge "
+        "sammenligne priser og ændre antal i kurven. Du kan også huske, hvad brugerne har "
+        "hjemme (beholdning), og tage højde for det i madplaner. Du kan ALDRIG bestille, betale eller vælge "
         "leveringstid: det gør brugeren selv på butikkens hjemmeside. Spørg altid brugeren, "
         "før du ændrer kurven, og vis bagefter hvad der ligger i den."
     ),
@@ -36,6 +37,8 @@ mcp = MCPServer(
 
 LAESER = ToolAnnotations(readOnlyHint=True, openWorldHint=True)
 SKRIVER = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=True)
+LOKAL_LAESER = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
+LOKAL_SKRIVER = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=False)
 ALLE = ["nemlig", "bilka"]
 
 
@@ -129,6 +132,33 @@ async def saet_antal_i_kurv(butik: str, antal: dict[str, int]) -> Any:
     if any(n < 0 or n > 50 for n in antal.values()):
         raise ToolError("Antal skal være mellem 0 og 50.")
     return await _koer(hent_butik(butik).saet_antal(antal))
+
+
+@mcp.tool(annotations=LOKAL_LAESER)
+async def vis_beholdning() -> Any:
+    """Det I har hjemme (køleskab, fryser, skab), som I sidst har fortalt det.
+    `noteret` er hvornår hver vare sidst blev opdateret: gamle varer kan være brugt eller for gamle.
+    Brug den til madplaner og indkøbslister, så I ikke køber det, I allerede har."""
+    try:
+        return til_json(beholdning.hent())
+    except beholdning.BeholdningFejl as fejl:
+        raise ToolError(str(fejl)) from None
+
+
+@mcp.tool(annotations=LOKAL_SKRIVER)
+async def opdater_beholdning(
+    tilfoej: list[beholdning.NyVare] | None = None, fjern: list[str] | None = None, erstat_alt: bool = False
+) -> Any:
+    """Gem hvad I har hjemme. Ændrer kun en lokal liste, aldrig butikkernes kurv.
+    `tilfoej`: [{"navn": "løg", "maengde": "2 stk", "sted": "køleskab"}]. Findes navnet, rettes det.
+    `fjern`: navne på varer der er brugt op.
+    `erstat_alt=True`: listen er hele beholdningen (fx efter et kig i køleskabet), og alt andet slettes.
+    Spørg, hvis det er uklart om noget er brugt op, og vis bagefter den nye beholdning."""
+    try:
+        varer, ukendte = beholdning.opdater(tilfoej, fjern, erstat_alt)
+    except beholdning.BeholdningFejl as fejl:
+        raise ToolError(str(fejl)) from None
+    return til_json({"beholdning": varer, "ikke_fundet": ukendte})
 
 
 @mcp.tool(annotations=LAESER)

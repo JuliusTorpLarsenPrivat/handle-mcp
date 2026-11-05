@@ -3,6 +3,10 @@
     handle-mcp login nemlig    spørger om email og kode, tjekker dem hos butikken og gemmer dem
     handle-mcp logout nemlig   sletter det gemte login
     handle-mcp status          viser hvilke butikker der har et gemt login (aldrig selve koden)
+    handle-mcp http-noegle     laver en ny adgangsnøgle til HTTP-tilstand (vises kun én gang)
+    handle-mcp http [host] [port]
+                               kører serveren over HTTP i stedet for til Claude Desktop.
+                               Standard: 127.0.0.1 8765 (kun denne maskine)
 """
 
 from __future__ import annotations
@@ -44,6 +48,23 @@ def kommando(args: list[str]) -> int:
                 except login.IntetLogin:
                     print(f"{butik}: intet login")
             return 0
+        case ["http-noegle"]:
+            from handle_mcp import netvaerk
+
+            print("Ny adgangsnøgle (den gamle virker ikke længere). Den vises kun nu:")
+            print(netvaerk.ny_noegle())
+            return 0
+        case ["http", *rest] if len(rest) <= 2:
+            from handle_mcp import netvaerk
+            from handle_mcp.server import mcp
+
+            host = rest[0] if rest else "127.0.0.1"
+            try:
+                port = int(rest[1]) if len(rest) == 2 else 8765
+            except ValueError:
+                print("Porten skal være et tal, fx: handle-mcp http 127.0.0.1 8765")
+                return 1
+            return netvaerk.koer(mcp, host, port)
         case _:
             print(HJAELP)
             return 1

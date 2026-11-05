@@ -35,7 +35,9 @@ En gennemgang til dig, der vil forstå MCP, Python-projektet og GitHub, ikke kun
 | `src/handle_mcp/data.py` | De fælles typer (Vare, Kurv, ...), som begge butikker oversættes til. |
 | `src/handle_mcp/sammenlign.py` | Prissætter en indkøbsliste i begge butikker. |
 | `src/handle_mcp/persondata.py` | Fjerner navn, adresse osv., før Claude ser svaret. |
-| `src/handle_mcp/cli.py` | `login`, `logout` og `status` i terminalen. |
+| `src/handle_mcp/beholdning.py` | Husker hvad I har hjemme, i en lokal JSON-fil. |
+| `src/handle_mcp/netvaerk.py` | Kører serveren over HTTP med adgangsnøgle (til en maskine, der altid er tændt). |
+| `src/handle_mcp/cli.py` | `login`, `logout`, `status`, `http-noegle` og `http` i terminalen. |
 | `tests/` | Automatiske test. Kør `uv run pytest`. |
 | `pyproject.toml` | Projektets "varedeklaration": navn, version, hvilke pakker det bruger, og at kommandoen `handle-mcp` starter `server.py`. |
 
