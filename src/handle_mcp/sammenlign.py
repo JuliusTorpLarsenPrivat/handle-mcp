@@ -1,11 +1,14 @@
 """Prissæt en indkøbsliste i flere butikker og find den billigste.
 
 Fremgangsmåde for hver vare på listen og hver butik:
-  1. Søg i butikken.
+  1. Søg i butikken og hent de første SOEGEDYBDE hits. Butikkerne sorterer efter popularitet,
+     så de billigste varer ligger tit længere nede end top 10 (fx nemligs egne discountvarer).
   2. Giv hvert resultat point efter, hvor mange af ordene fra listen der står i varens navn,
-     mærke eller mængde. Alle ord fundet = sikkert match, ellers markeres det 'usikkert'.
-  3. Vælg det bedste match på lager. Ved lige mange point vinder den laveste enhedspris
-     (kr. pr. kg/l), ellers den laveste pris.
+     mærke eller mængde (se ord_point). "letmælk" tæller fuldt for "mælk", mens
+     "mælkechokolade" kun tæller halvt. Fuldt point for alle ord = sikkert match, ellers
+     markeres det 'usikkert'.
+  3. Vælg det bedste match på lager (ikke gratisvarer). Ved lige mange point vinder den
+     laveste enhedspris (kr. pr. kg/l) i den mest almindelige enhed, ellers den laveste pris.
 Til sidst lægges butikkens gebyrer oven i, og minimumskøbet tjekkes.
 
 Det er en enkel metode, så modellen bør se de usikre linjer igennem, før kurven fyldes.
@@ -15,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from decimal import Decimal
 
@@ -22,10 +26,34 @@ from handle_mcp.butikker import Butik, ButikFejl
 from handle_mcp.data import Vare
 
 ERSTAT = str.maketrans({"æ": "ae", "ø": "oe", "å": "aa", "é": "e"})
+SOEGEDYBDE = 50  # hits pr. vare og butik. 10 var for lidt: de billigste lå tit under top 10.
+# Endelser der bare er bøjning af samme ord (efter æ→ae osv.): tomat/tomater, æble/æbler, løg/løgene.
+BOEJNINGER = {"", "e", "r", "er", "n", "en", "et", "ne", "ene", "erne", "s", "es"}
+# Endelser der kun siger noget om udskæring/form, så varen stadig er den samme: kyllingebrystfilet.
+FORMER = {"filet", "fileter", "koed", "tern", "strimler", "stykker"}
 
 
 def ord_i(tekst: str) -> set[str]:
     return set(re.findall(r"[a-z0-9]+", tekst.lower().translate(ERSTAT)))
+
+
+def ord_point(oensket: str, har: str) -> float:
+    """Hvor godt ét ønsket ord passer med ét ord fra varen.
+
+    På dansk står hovedordet sidst: "letmælk" ER mælk, men "mælkechokolade" er chokolade.
+      1   samme ord, en bøjning (tomat/tomater), en udskæring (kyllingebryst/-filet)
+          eller et sammensat ord, der ender på ordet (mælk/letmælk)
+      0.5 et sammensat ord, der starter med ordet (mælk/mælkechokolade)
+      0   ellers"""
+    kort, lang = sorted((oensket, har), key=len)
+    if len(kort) <= 2:
+        return 1.0 if kort == lang else 0.0
+    if lang.startswith(kort):
+        rest = lang[len(kort):]
+        return 1.0 if rest in BOEJNINGER or rest.lstrip("e") in FORMER else 0.5
+    if any(lang[: len(lang) - len(b)].endswith(kort) for b in BOEJNINGER if len(lang) - len(b) > len(kort)):
+        return 1.0
+    return 0.0
 
 
 def point(soegning: str, vare: Vare) -> float:
@@ -33,18 +61,35 @@ def point(soegning: str, vare: Vare) -> float:
     if not oensket:
         return 0.0
     har = ord_i(" ".join(x for x in (vare.navn, vare.maerke, vare.maengde) if x))
-    # "tomat" skal også ramme "tomater" og "hakkede tomater": sammenlign på ordets start.
-    fundet = sum(1 for o in oensket if any(h.startswith(o) or o.startswith(h) for h in har if len(h) > 2))
+    fundet = sum(max((ord_point(o, h) for h in har), default=0.0) for o in oensket)
     return fundet / len(oensket)
 
 
-def bedste(soegning: str, varer: list[Vare]) -> tuple[list[Vare], float]:
-    paa_lager = [v for v in varer if v.paa_lager]
-    vurderet = sorted(
-        ((point(soegning, v), v) for v in paa_lager),
-        key=lambda pv: (-pv[0], pv[1].enhedspris if pv[1].enhedspris is not None else pv[1].pris, pv[1].pris),
+def rangeret(soegning: str, varer: list[Vare]) -> list[tuple[float, Vare]]:
+    """Relevante varer på lager: flest point først, derefter laveste enhedspris og pris.
+
+    Gratisvarer (0 kr, fx 'Undgå madspild' med kort holdbarhed) springes over: de er få og
+    forsvinder hurtigt. Enhedspriser sammenlignes kun i samme enhed som de fleste af de bedste
+    match (kr/l for mælk), så fx små portionspakker i kr/stk ikke snyder sig foran."""
+    vurderet = [(p, v) for v in varer if v.paa_lager and v.pris > 0 and (p := point(soegning, v)) > 0]
+    if not vurderet:
+        return []
+    top = max(p for p, _ in vurderet)
+    enheder = Counter(v.enhed for p, v in vurderet if p == top)
+    hovedenhed = enheder.most_common(1)[0][0]
+    return sorted(
+        vurderet,
+        key=lambda pv: (
+            -pv[0],
+            pv[1].enhed != hovedenhed,
+            pv[1].enhedspris if pv[1].enhedspris is not None else pv[1].pris,
+            pv[1].pris,
+        ),
     )
-    vurderet = [(p, v) for p, v in vurderet if p > 0]
+
+
+def bedste(soegning: str, varer: list[Vare]) -> tuple[list[Vare], float]:
+    vurderet = rangeret(soegning, varer)
     return [v for _, v in vurderet[:3]], (vurderet[0][0] if vurderet else 0.0)
 
 
@@ -93,7 +138,7 @@ async def prissaet(butik: Butik, liste: list[tuple[str, int]]) -> Butiksresultat
         res.gebyrer = {k: v for k, v in kurv.gebyrer.items() if k != "pant"}
         res.minimumskoeb = kurv.minimumskoeb
         for soegning, antal in liste:  # én ad gangen: vær flink ved butikken
-            fundne, score = bedste(soegning, await butik.soeg(soegning, 10))
+            fundne, score = bedste(soegning, await butik.soeg(soegning, SOEGEDYBDE))
             res.linjer.append(Linje(soegning, antal, fundne[0] if fundne else None, fundne[1:], score >= 1))
     except ButikFejl as fejl:
         res.fejl = str(fejl)

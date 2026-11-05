@@ -12,8 +12,8 @@ Kræver [uv](https://docs.astral.sh/uv/) og [Git](https://git-scm.com/download/w
 
 ```powershell
 # 1. Gem login (spørger om email og kode, tjekker dem og gemmer i Windows Credential Manager)
-uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.1.0 handle-mcp login nemlig
-uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.1.0 handle-mcp login bilka
+uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.2.0 handle-mcp login nemlig
+uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.2.0 handle-mcp login bilka
 ```
 
 2. Claude Desktop → Settings → Developer → Edit Config:
@@ -23,7 +23,7 @@ uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.1.0 handl
   "mcpServers": {
     "handle": {
       "command": "C:\\Users\\JuliusTorpLarsen\\.local\\bin\\uvx.exe",
-      "args": ["--from", "git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.1.0", "handle-mcp"]
+      "args": ["--from", "git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.2.0", "handle-mcp"]
     }
   }
 }
@@ -35,10 +35,10 @@ uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.1.0 handl
 
 | Værktøj | Ændrer noget? | Hvad |
 |---|---|---|
-| `soeg_varer` | nej | Pris, enhedspris, tilbud, lager |
+| `soeg_varer` | nej | Pris, enhedspris, tilbud, lager. `billigst_foerst=True` gennemsøger 50 hits og sorterer efter enhedspris |
 | `ugens_tilbud` | nej | Ugens tilbud i én butik |
 | `soeg_opskrifter` / `hent_opskrift` | nej | nemligs opskrifter og varerne til dem |
-| `sammenlign_liste` | nej | Prissætter en liste i begge butikker inkl. gebyrer |
+| `sammenlign_liste` | nej | Prissætter en liste i begge butikker inkl. gebyrer (vælger blandt 50 hits pr. vare) |
 | `vis_kurv` | nej | Kurv, gebyrer, minimumskøb |
 | `saet_antal_i_kurv` | **ja, kun kurven** | Sætter antal af varer i kurven |
 | `leveringstider` | nej | Ledige tider og pris |

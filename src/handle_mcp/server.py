@@ -21,7 +21,7 @@ from handle_mcp import login
 from handle_mcp.butikker import ButikFejl, hent_butik
 from handle_mcp.data import til_json
 from handle_mcp.persondata import rens
-from handle_mcp.sammenlign import sammenlign
+from handle_mcp.sammenlign import SOEGEDYBDE, rangeret, sammenlign
 from handle_mcp.vagt import VagtFejl
 
 mcp = MCPServer(
@@ -48,9 +48,20 @@ async def _koer(kald) -> Any:
 
 
 @mcp.tool(annotations=LAESER)
-async def soeg_varer(tekst: str, butik: str = "nemlig", antal: int = 10) -> Any:
-    """Søg efter varer i én butik (nemlig eller bilka). Giver pris, enhedspris, tilbud og lager."""
-    return await _koer(hent_butik(butik).soeg(tekst, min(antal, 30)))
+async def soeg_varer(tekst: str, butik: str = "nemlig", antal: int = 10, billigst_foerst: bool = False) -> Any:
+    """Søg efter varer i én butik (nemlig eller bilka). Giver pris, enhedspris, tilbud og lager.
+    Butikken sorterer efter popularitet, så de billigste varer er tit ikke i toppen. Sæt
+    `billigst_foerst=True` for at gennemsøge flere hits og få de relevante varer på lager
+    sorteret efter enhedspris (kr. pr. kg/l). Brug det, når prisen betyder noget, fx til madplaner."""
+    antal = max(1, min(antal, 30))
+    if not billigst_foerst:
+        return await _koer(hent_butik(butik).soeg(tekst, antal))
+
+    async def billigst() -> list:
+        varer = await hent_butik(butik).soeg(tekst, SOEGEDYBDE)
+        return [v for _, v in rangeret(tekst, varer)[:antal]]
+
+    return await _koer(billigst())
 
 
 @mcp.tool(annotations=LAESER)
