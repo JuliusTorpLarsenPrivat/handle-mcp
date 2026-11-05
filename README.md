@@ -12,8 +12,8 @@ Kræver [uv](https://docs.astral.sh/uv/) og [Git](https://git-scm.com/download/w
 
 ```powershell
 # 1. Gem login (spørger om email og kode, tjekker dem og gemmer i Windows Credential Manager)
-uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.5.1 handle-mcp login nemlig
-uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.5.1 handle-mcp login bilka
+uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.6.0 handle-mcp login nemlig
+uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.6.0 handle-mcp login bilka
 ```
 
 2. Claude Desktop → Settings → Developer → Edit Config:
@@ -23,7 +23,7 @@ uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.5.1 handl
   "mcpServers": {
     "handle": {
       "command": "C:\\Users\\JuliusTorpLarsen\\.local\\bin\\uvx.exe",
-      "args": ["--from", "git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.5.1", "handle-mcp"]
+      "args": ["--from", "git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.6.0", "handle-mcp"]
     }
   }
 }
@@ -38,7 +38,7 @@ uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.5.1 handl
 | `soeg_varer` | nej | Pris, enhedspris, tilbud, lager. `billigst_foerst=True` gennemsøger 50 hits og ugens tilbud og sorterer efter enhedspris |
 | `ugens_tilbud` | nej | Ugens tilbud i én butik |
 | `soeg_opskrifter` / `hent_opskrift` | nej | nemligs opskrifter og varerne til dem |
-| `sammenlign_liste` | nej | Prissætter en liste i begge butikker inkl. gebyrer (vælger blandt 50 hits pr. vare plus ugens tilbud) |
+| `sammenlign_liste` | nej | Prissætter en liste i begge butikker inkl. gebyrer. Skriv mængden med ("500 g hakket oksekød"), så vælges de pakker, der dækker behovet billigst. `oekologisk=True` foretrækker øko. Rå varer frem for forarbejdede, og 4 alternativer pr. vare |
 | `vis_kurv` | nej | Kurv, gebyrer, minimumskøb |
 | `saet_antal_i_kurv` | **ja, kun kurven** | Sætter antal af varer i kurven |
 | `leveringstider` | nej | Ledige tider og pris |
@@ -57,7 +57,7 @@ Beholdning, opskrifter og profil ligger som JSON-filer i `%LOCALAPPDATA%\handle-
 - Login ligger kun i styresystemets nøglering på din computer (eller i miljøvariabler).
 - Alle kald går gennem `vagt.py`, som kun tillader butikkernes egne adresser og afviser alt, der ligner bestilling, betaling eller valg af levering.
 - Navn, adresse, telefon og e-mail fjernes fra svarene, før Claude ser dem.
-- Lås altid installationen til en version (fx `@v0.5.1`), så koden ikke ændrer sig uden din viden.
+- Lås altid installationen til en version (fx `@v0.6.0`), så koden ikke ændrer sig uden din viden.
 
 ## Over netværket (HTTP)
 

@@ -22,7 +22,8 @@ from handle_mcp.butikker import ButikFejl, hent_butik
 from handle_mcp.data import til_json
 from handle_mcp.lokal import LokalFejl
 from handle_mcp.persondata import rens
-from handle_mcp.sammenlign import hent_tilbud, kandidater, rangeret, sammenlign
+from handle_mcp.maengde import behov
+from handle_mcp.sammenlign import antal_pakker, er_oeko, hent_tilbud, kandidater, pris_for_behov, rangeret, sammenlign
 from handle_mcp.vagt import VagtFejl
 
 mcp = MCPServer(
@@ -32,7 +33,12 @@ mcp = MCPServer(
         "sammenligne priser og ændre antal i kurven. Du kan også huske, hvad brugerne har "
         "hjemme (beholdning), og tage højde for det i madplaner. Til madplaner: læs vis_profil "
         "(personer, ugebudget, præferencer, ting at undgå), vælg helst retter fra vis_opskrifter "
-        "(retter brugerne stoler på), og sig til, hvis prisen går over ugebudgettet. Du kan ALDRIG bestille, betale eller vælge "
+        "(retter brugerne stoler på), og sig til, hvis prisen går over ugebudgettet. "
+        "Vær grundig, når du vælger varer: tag ikke bare første bedste eller opskriftens "
+        "standardvare. Skriv mængden med i søgningen, prøv flere søgetekster, gå alternativerne "
+        "igennem og vælg ud fra pris, mængde og kvalitet (rå varer, økologi hvis profilen siger "
+        "det, ikke ultraforarbejdet). Fortæl kort, hvorfor du valgte som du gjorde. "
+        "Du kan ALDRIG bestille, betale eller vælge "
         "leveringstid: det gør brugeren selv på butikkens hjemmeside. Spørg altid brugeren, "
         "før du ændrer kurven, og vis bagefter hvad der ligger i den."
     ),
@@ -54,19 +60,27 @@ async def _koer(kald) -> Any:
 
 
 @mcp.tool(annotations=LAESER)
-async def soeg_varer(tekst: str, butik: str = "nemlig", antal: int = 10, billigst_foerst: bool = False) -> Any:
+async def soeg_varer(
+    tekst: str, butik: str = "nemlig", antal: int = 10, billigst_foerst: bool = False, oekologisk: bool = False
+) -> Any:
     """Søg efter varer i én butik (nemlig eller bilka). Giver pris, enhedspris, tilbud og lager.
     Butikken sorterer efter popularitet, så de billigste varer er tit ikke i toppen. Sæt
     `billigst_foerst=True` for at gennemsøge flere hits og ugens tilbud og få de relevante varer
-    på lager sorteret efter enhedspris (kr. pr. kg/l). Brug det, når prisen betyder noget, fx til madplaner."""
+    på lager sorteret efter det billigste køb. Står der en mængde i teksten ("500 g hakket
+    oksekød"), sorteres efter prisen for at dække den. Brug det, når prisen betyder noget, og
+    prøv flere søgetekster (fx "kyllingebryst øko", "kyllingeinderfilet"), før du vælger."""
     antal = max(1, min(antal, 30))
     if not billigst_foerst:
         return await _koer(hent_butik(butik).soeg(tekst, antal))
 
     async def billigst() -> list:
         b = hent_butik(butik)
-        varer = await kandidater(b, tekst, await hent_tilbud(b))
-        return [v for _, v in rangeret(tekst, varer)[:antal]]
+        rent, behov_ = behov(tekst)
+        varer = await kandidater(b, rent, await hent_tilbud(b))
+        return [
+            {"vare": v, "pakker": antal_pakker(v, behov_), "pris_for_behov": pris_for_behov(v, behov_), "oeko": er_oeko(v)}
+            for _, v in rangeret(rent, varer, behov_, oekologisk)[:antal]
+        ]
 
     return await _koer(billigst())
 
@@ -91,14 +105,22 @@ async def hent_opskrift(opskrift: str, personer: int | None = None) -> Any:
 
 
 @mcp.tool(annotations=LAESER)
-async def sammenlign_liste(varer: list[str], antal: list[int] | None = None, butikker: list[str] | None = None) -> Any:
+async def sammenlign_liste(
+    varer: list[str], antal: list[int] | None = None, butikker: list[str] | None = None, oekologisk: bool = False
+) -> Any:
     """Prissæt en indkøbsliste i flere butikker, med gebyrer, og find den billigste.
-    `varer` er fx ["letmælk 1 l", "hakkede tomater", "pasta"], `antal` samme rækkefølge (standard 1).
-    Usikre match er markeret og bør tjekkes, før kurven fyldes."""
+    `varer` er fx ["500 g hakket oksekød", "1 l letmælk", "2 stk løg", "pasta"]. Skriv mængden
+    med, når du kender den: så vælges de pakker, der dækker behovet billigst, i stedet for den
+    laveste kg-pris (som kan være en alt for stor pakke). `antal` ganger hele linjen (standard 1).
+    `oekologisk=True` lader økovarer koste op til 50 % mere og stadig blive valgt.
+    Hver linje har op til 4 alternativer. Valget er kun et forslag ud fra pris og ord: GÅ
+    ALTERNATIVERNE IGENNEM og vælg selv ud fra kvalitet (rå vare frem for færdigret, ikke
+    ultraforarbejdet, rigtig vare frem for smagsvariant, profilens præferencer). Usikre linjer
+    skal altid tjekkes, evt. med en bedre søgetekst, før kurven fyldes."""
     antal = antal or []
     liste = [(v, antal[i] if i < len(antal) else 1) for i, v in enumerate(varer)]
     try:
-        resultater = await sammenlign([hent_butik(b) for b in butikker or ALLE], liste)
+        resultater = await sammenlign([hent_butik(b) for b in butikker or ALLE], liste, oekologisk)
     except ButikFejl as fejl:
         raise ToolError(str(fejl)) from None
     ud = []
@@ -115,7 +137,18 @@ async def sammenlign_liste(varer: list[str], antal: list[int] | None = None, but
                 "mangler": r.mangler,
                 "usikre": r.usikre,
                 "linjer": [
-                    {"soegning": ln.soegning, "antal": ln.antal, "valgt": ln.valgt, "beloeb": ln.beloeb, "sikker": ln.sikker, "alternativer": ln.alternativer}
+                    {
+                        "soegning": ln.soegning,
+                        "behov": str(ln.behov) if ln.behov else None,
+                        "antal": ln.antal,
+                        "valgt": ln.valgt,
+                        "pakker": ln.pakker,
+                        "beloeb": ln.beloeb,
+                        "sikker": ln.sikker,
+                        "alternativer": [
+                            {"vare": a, "pakker": antal_pakker(a, ln.behov) or 1, "oeko": er_oeko(a)} for a in ln.alternativer
+                        ],
+                    }
                     for ln in r.linjer
                 ],
             }

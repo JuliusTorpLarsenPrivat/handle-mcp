@@ -9,11 +9,14 @@ Fremgangsmåde for hver vare på listen og hver butik:
      mærke eller mængde (se ord_point). "letmælk" tæller fuldt for "mælk", mens
      "mælkechokolade" kun tæller halvt. Fuldt point for alle ord = sikkert match, ellers
      markeres det 'usikkert'.
-  3. Vælg det bedste match på lager (ikke gratisvarer). Ved lige mange point vinder den
-     laveste enhedspris (kr. pr. kg/l) i den mest almindelige enhed, ellers den laveste pris.
+  3. Vælg det bedste match på lager (ikke gratisvarer). Står der en mængde på listen
+     ("500 g hakket oksekød"), vinder de pakker, der dækker den billigst. Ellers vinder den
+     laveste enhedspris (kr. pr. kg/l) i den mest almindelige enhed. Med oeko=True må
+     økovarer koste lidt mere.
 Til sidst lægges butikkens gebyrer oven i, og minimumskøbet tjekkes.
 
-Det er en enkel metode, så modellen bør se de usikre linjer igennem, før kurven fyldes.
+Det er en enkel metode. Modellen skal se alternativerne og de usikre linjer igennem og
+vælge selv ud fra kvalitet, før kurven fyldes.
 """
 
 from __future__ import annotations
@@ -26,10 +29,13 @@ from decimal import Decimal
 
 from handle_mcp.butikker import Butik, ButikFejl
 from handle_mcp.data import Vare
+from handle_mcp.maengde import Maengde, behov, pakker, pakkestoerrelse
 
 ERSTAT = str.maketrans({"æ": "ae", "ø": "oe", "å": "aa", "é": "e"})
 SOEGEDYBDE = 50  # hits pr. vare og butik. 10 var for lidt: de billigste lå tit under top 10.
 TILBUDSDYBDE = 200  # tilbud pr. butik (nemlig: pr. tilbudsliste), hentet én gang pr. sammenligning
+ALTERNATIVER = 4  # så Claude kan se efter og ikke bare tager første bedste
+OEKO_TILLAEG = 1.5  # med oeko=True må en økovare koste op til 50 % mere og stadig vinde
 # Endelser der bare er bøjning af samme ord (efter æ→ae osv.): tomat/tomater, æble/æbler, løg/løgene.
 BOEJNINGER = {"", "e", "r", "er", "n", "en", "et", "ne", "ene", "erne", "s", "es"}
 # Endelser der kun siger noget om udskæring/form, så varen stadig er den samme: kyllingebrystfilet.
@@ -92,8 +98,14 @@ def _del(navn: str) -> tuple[str, str, str]:
     return (navn, "", "") if not m else (navn[: m.start()], m.group(), navn[m.end():])
 
 
-def rangeret(soegning: str, varer: list[Vare]) -> list[tuple[float, Vare]]:
-    """Relevante varer på lager: flest point først, derefter laveste enhedspris og pris.
+def rangeret(
+    soegning: str, varer: list[Vare], behov_: Maengde | None = None, oeko: bool = False
+) -> list[tuple[float, Vare]]:
+    """Relevante varer på lager: flest point først, derefter det billigste køb.
+
+    Med et behov (fx 500 g) er det billigste køb de pakker, der dækker behovet billigst:
+    2 x 500 g kan slå en 4 kg-pose med lavere kg-pris. Uden behov vinder laveste enhedspris.
+    Med oeko=True må en økovare koste op til OEKO_TILLAEG gange mere og stadig vinde.
 
     Gratisvarer (0 kr, fx 'Undgå madspild' med kort holdbarhed) springes over: de er få og
     forsvinder hurtigt. Enhedspriser sammenlignes kun i samme enhed som de fleste af de bedste
@@ -104,20 +116,77 @@ def rangeret(soegning: str, varer: list[Vare]) -> list[tuple[float, Vare]]:
     top = max(p for p, _ in vurderet)
     enheder = Counter(v.enhed for p, v in vurderet if p == top)
     hovedenhed = enheder.most_common(1)[0][0]
-    return sorted(
-        vurderet,
-        key=lambda pv: (
-            -pv[0],
-            pv[1].enhed != hovedenhed,
-            pv[1].enhedspris if pv[1].enhedspris is not None else pv[1].pris,
-            pv[1].pris,
-        ),
-    )
+
+    oensket = ord_i(soegning)
+
+    def noegle(pv: tuple[float, Vare]):
+        p, v = pv
+        rabat = OEKO_TILLAEG if oeko and er_oeko(v) else 1  # øko må koste lidt mere
+        kost = pris_for_behov(v, behov_)
+        enhedspris = v.enhedspris if v.enhedspris is not None else v.pris
+        return (
+            -p,
+            er_forarbejdet(v, oensket),  # rå vare frem for pålæg, færdigret og indbagt
+            har_tilbehoer(v),  # "Kartofler" frem for "Kartofler m. krydderurter"
+            kost is None,  # varer, hvor vi kan regne pakkerne ud, først
+            float(kost or 0) / rabat,
+            v.enhed != hovedenhed,
+            float(enhedspris) / rabat,
+            v.pris,
+        )
+
+    return sorted(vurderet, key=noegle)
 
 
-def bedste(soegning: str, varer: list[Vare]) -> tuple[list[Vare], float]:
-    vurderet = rangeret(soegning, varer)
-    return [v for _, v in vurderet[:3]], (vurderet[0][0] if vurderet else 0.0)
+# Ord der afslører en forarbejdet vare (også sidst i sammensatte ord: aspargessuppe,
+# baconleverpostej). Fundet i madplantest: kyllingebryst blev til pålæg, laks til indbagt laks.
+FORARBEJDET = (
+    "indbagt", "paneret", "panerede", "marineret", "faerdigret", "suppe", "sauce", "dressing",
+    "snack", "nudler", "tops", "postej", "paalaeg", "skiver", "sandwich", "pizza", "burger",
+    "nuggets", "pesto", "marmelade", "dip", "salat", "spread", "smoothie", "drik",
+)  # fmt: skip
+
+
+def er_forarbejdet(v: Vare, oensket: set[str]) -> bool:
+    """Har varen et 'forarbejdet'-ord, som brugeren ikke selv søgte efter?"""
+    for o in ord_i(v.navn):
+        for f in FORARBEJDET:
+            if o.endswith(f) and not any(f in s for s in oensket):
+                return True
+    return False
+
+
+# Ord efter "m."/"i" der beskriver varen selv, ikke tilbehør: "Laksefilet m. skind",
+# "Grønne asparges i bundt", "Hvidløg i net".
+NEUTRALE = {"skind", "ben", "uden", "bundt", "bakke", "net", "pose", "glas", "daase", "oeko", "dansk", "frost", "stk"}
+
+
+def har_tilbehoer(v: Vare) -> bool:
+    _, skille, rest = _del(v.navn)
+    return bool(skille) and not {o for o in ord_i(rest) if not o.isdigit()} <= NEUTRALE
+
+
+def er_oeko(v: Vare) -> bool:
+    return any(o.startswith("oeko") for o in ord_i(" ".join(x for x in (v.navn, v.maengde, v.maerke) if x)))
+
+
+def antal_pakker(v: Vare, behov_: Maengde | None) -> int | None:
+    """Pakker af varen, der skal til for at dække behovet. None hvis det ikke kan regnes ud."""
+    if behov_ is None:
+        return None
+    stoerrelse = pakkestoerrelse(v.maengde, v.navn, enhed=behov_.enhed)
+    return pakker(behov_, stoerrelse) if stoerrelse else None
+
+
+def pris_for_behov(v: Vare, behov_: Maengde | None) -> Decimal | None:
+    n = antal_pakker(v, behov_)
+    return v.pris * n if n else None
+
+
+def bedste(soegning: str, varer: list[Vare], behov_: Maengde | None = None, oeko: bool = False) -> tuple[list[Vare], float]:
+    """Den bedste vare og ALTERNATIVER alternativer, plus pointene for den bedste."""
+    vurderet = rangeret(soegning, varer, behov_, oeko)
+    return [v for _, v in vurderet[: 1 + ALTERNATIVER]], (vurderet[0][0] if vurderet else 0.0)
 
 
 @dataclass
@@ -127,10 +196,15 @@ class Linje:
     valgt: Vare | None
     alternativer: list[Vare]
     sikker: bool
+    behov: Maengde | None = None
+
+    @property
+    def pakker(self) -> int:
+        return (antal_pakker(self.valgt, self.behov) if self.valgt else None) or 1
 
     @property
     def beloeb(self) -> Decimal:
-        return self.valgt.pris * self.antal if self.valgt else Decimal(0)
+        return self.valgt.pris * self.pakker * self.antal if self.valgt else Decimal(0)
 
 
 @dataclass
@@ -177,7 +251,7 @@ async def kandidater(butik: Butik, soegning: str, tilbud: list[Vare]) -> list[Va
     return hits + [v for v in tilbud if v.id not in kendte and point(soegning, v, sammensat=False) >= 1]
 
 
-async def prissaet(butik: Butik, liste: list[tuple[str, int]]) -> Butiksresultat:
+async def prissaet(butik: Butik, liste: list[tuple[str, int]], oeko: bool = False) -> Butiksresultat:
     res = Butiksresultat(butik.navn)
     try:
         kurv = await butik.kurv()
@@ -185,14 +259,18 @@ async def prissaet(butik: Butik, liste: list[tuple[str, int]]) -> Butiksresultat
         res.minimumskoeb = kurv.minimumskoeb
         tilbud = await hent_tilbud(butik)  # én gang pr. butik, ikke pr. vare
         for soegning, antal in liste:  # én ad gangen: vær flink ved butikken
-            fundne, score = bedste(soegning, await kandidater(butik, soegning, tilbud))
-            res.linjer.append(Linje(soegning, antal, fundne[0] if fundne else None, fundne[1:], score >= 1))
+            tekst, behov_ = behov(soegning)  # "500 g hakket oksekød" → søg "hakket oksekød"
+            fundne, score = bedste(tekst, await kandidater(butik, tekst, tilbud), behov_, oeko)
+            valgt = fundne[0] if fundne else None
+            # En forarbejdet vare er kun valgt, fordi der ikke var andet: den skal tjekkes
+            sikker = score >= 1 and not (valgt and er_forarbejdet(valgt, ord_i(tekst)))
+            res.linjer.append(Linje(soegning, antal, valgt, fundne[1:], sikker, behov_))
     except ButikFejl as fejl:
         res.fejl = str(fejl)
     return res
 
 
-async def sammenlign(butikker: list[Butik], liste: list[tuple[str, int]]) -> list[Butiksresultat]:
+async def sammenlign(butikker: list[Butik], liste: list[tuple[str, int]], oeko: bool = False) -> list[Butiksresultat]:
     """Butikkerne prissættes samtidig. Den billigste med flest fundne varer står først."""
-    resultater = await asyncio.gather(*(prissaet(b, liste) for b in butikker))
+    resultater = await asyncio.gather(*(prissaet(b, liste, oeko) for b in butikker))
     return sorted(resultater, key=lambda r: (r.fejl is not None, len(r.mangler), r.i_alt))

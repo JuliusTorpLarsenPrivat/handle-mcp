@@ -135,7 +135,7 @@ async def test_soeg_varer_billigst_foerst():
     finally:
         server.hent_butik = gammel
     assert b.antal_spurgt == [SOEGEDYBDE, 3]
-    assert len(svar) == 3 and svar[0]["id"] == "billig"
+    assert len(svar) == 3 and svar[0]["vare"]["id"] == "billig"
     assert len(normal) == 3 and all(v["id"] != "billig" for v in normal)
 
 
