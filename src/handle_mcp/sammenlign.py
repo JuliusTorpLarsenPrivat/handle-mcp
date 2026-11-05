@@ -3,6 +3,8 @@
 Fremgangsmåde for hver vare på listen og hver butik:
   1. Søg i butikken og hent de første SOEGEDYBDE hits. Butikkerne sorterer efter popularitet,
      så de billigste varer ligger tit længere nede end top 10 (fx nemligs egne discountvarer).
+     Butikkens tilbud (hentet én gang) lægges oveni, så et tilbud kommer med, selvom søgningen
+     ikke har det i toppen.
   2. Giv hvert resultat point efter, hvor mange af ordene fra listen der står i varens navn,
      mærke eller mængde (se ord_point). "letmælk" tæller fuldt for "mælk", mens
      "mælkechokolade" kun tæller halvt. Fuldt point for alle ord = sikkert match, ellers
@@ -27,6 +29,7 @@ from handle_mcp.data import Vare
 
 ERSTAT = str.maketrans({"æ": "ae", "ø": "oe", "å": "aa", "é": "e"})
 SOEGEDYBDE = 50  # hits pr. vare og butik. 10 var for lidt: de billigste lå tit under top 10.
+TILBUDSDYBDE = 200  # tilbud pr. butik (nemlig: pr. tilbudsliste), hentet én gang pr. sammenligning
 # Endelser der bare er bøjning af samme ord (efter æ→ae osv.): tomat/tomater, æble/æbler, løg/løgene.
 BOEJNINGER = {"", "e", "r", "er", "n", "en", "et", "ne", "ene", "erne", "s", "es"}
 # Endelser der kun siger noget om udskæring/form, så varen stadig er den samme: kyllingebrystfilet.
@@ -37,31 +40,33 @@ def ord_i(tekst: str) -> set[str]:
     return set(re.findall(r"[a-z0-9]+", tekst.lower().translate(ERSTAT)))
 
 
-def ord_point(oensket: str, har: str) -> float:
+def ord_point(oensket: str, har: str, sammensat: bool = True) -> float:
     """Hvor godt ét ønsket ord passer med ét ord fra varen.
 
     På dansk står hovedordet sidst: "letmælk" ER mælk, men "mælkechokolade" er chokolade.
       1   samme ord, en bøjning (tomat/tomater), en udskæring (kyllingebryst/-filet)
           eller et sammensat ord, der ender på ordet (mælk/letmælk)
       0.5 et sammensat ord, der starter med ordet (mælk/mælkechokolade)
-      0   ellers"""
+      0   ellers
+    Med sammensat=False tæller sammensatte ord, der ender på ordet, ikke. Det bruges til tilbud,
+    som butikkens søgning ikke har vurderet: ellers bliver 'æg' til trusseindlæg og 'ost' til frost."""
     kort, lang = sorted((oensket, har), key=len)
     if len(kort) <= 2:
         return 1.0 if kort == lang else 0.0
     if lang.startswith(kort):
         rest = lang[len(kort):]
         return 1.0 if rest in BOEJNINGER or rest.lstrip("e") in FORMER else 0.5
-    if any(lang[: len(lang) - len(b)].endswith(kort) for b in BOEJNINGER if len(lang) - len(b) > len(kort)):
+    if sammensat and any(lang[: len(lang) - len(b)].endswith(kort) for b in BOEJNINGER if len(lang) - len(b) > len(kort)):
         return 1.0
     return 0.0
 
 
-def point(soegning: str, vare: Vare) -> float:
+def point(soegning: str, vare: Vare, sammensat: bool = True) -> float:
     oensket = ord_i(soegning)
     if not oensket:
         return 0.0
     har = ord_i(" ".join(x for x in (vare.navn, vare.maerke, vare.maengde) if x))
-    fundet = sum(max((ord_point(o, h) for h in har), default=0.0) for o in oensket)
+    fundet = sum(max((ord_point(o, h, sammensat) for h in har), default=0.0) for o in oensket)
     return fundet / len(oensket)
 
 
@@ -131,14 +136,34 @@ class Butiksresultat:
         return [ln.soegning for ln in self.linjer if ln.valgt and not ln.sikker]
 
 
+async def hent_tilbud(butik: Butik) -> list[Vare]:
+    """Butikkens aktuelle tilbud. De er en bonus: fejler de, bruges søgningen alene."""
+    try:
+        return await butik.tilbud(TILBUDSDYBDE)
+    except ButikFejl:
+        return []
+
+
+async def kandidater(butik: Butik, soegning: str, tilbud: list[Vare]) -> list[Vare]:
+    """Søgeresultaterne plus tilbudsvarer, som søgningen ikke fandt.
+
+    Butikkens søgning har allerede sorteret irrelevante varer fra, men tilbudslisten er
+    usorteret. Derfor kommer et tilbud kun med, hvis alle ord passer direkte (ikke via et
+    sammensat ord). Bagefter rangeres alt ens af rangeret()."""
+    hits = await butik.soeg(soegning, SOEGEDYBDE)
+    kendte = {v.id for v in hits}
+    return hits + [v for v in tilbud if v.id not in kendte and point(soegning, v, sammensat=False) >= 1]
+
+
 async def prissaet(butik: Butik, liste: list[tuple[str, int]]) -> Butiksresultat:
     res = Butiksresultat(butik.navn)
     try:
         kurv = await butik.kurv()
         res.gebyrer = {k: v for k, v in kurv.gebyrer.items() if k != "pant"}
         res.minimumskoeb = kurv.minimumskoeb
+        tilbud = await hent_tilbud(butik)  # én gang pr. butik, ikke pr. vare
         for soegning, antal in liste:  # én ad gangen: vær flink ved butikken
-            fundne, score = bedste(soegning, await butik.soeg(soegning, SOEGEDYBDE))
+            fundne, score = bedste(soegning, await kandidater(butik, soegning, tilbud))
             res.linjer.append(Linje(soegning, antal, fundne[0] if fundne else None, fundne[1:], score >= 1))
     except ButikFejl as fejl:
         res.fejl = str(fejl)

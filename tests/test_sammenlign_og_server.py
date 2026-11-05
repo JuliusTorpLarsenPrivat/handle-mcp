@@ -14,6 +14,9 @@ class FalskButik:
     async def soeg(self, tekst, antal=10):
         return [Vare(self.navn, navn, navn, Decimal(p), enhedspris=Decimal(p)) for navn, p in self.priser if tekst.split()[0] in navn.lower()]
 
+    async def tilbud(self, antal=25):
+        return []
+
 
 def test_point_taeller_ord_og_boejninger():
     v = Vare("x", "1", "Hakkede tomater", Decimal(5), maengde="400 g")
@@ -63,8 +66,12 @@ class DybButik:
 
     navn = "dyb"
 
-    def __init__(self):
+    def __init__(self, tilbud=()):
         self.antal_spurgt = []
+        self._tilbud = list(tilbud)
+
+    async def tilbud(self, antal=25):
+        return self._tilbud
 
     async def kurv(self):
         return Kurv(self.navn, [], Decimal(0), {}, None, None)
@@ -96,6 +103,42 @@ async def test_soeg_varer_billigst_foerst():
     assert b.antal_spurgt == [SOEGEDYBDE, 3]
     assert len(svar) == 3 and svar[0]["id"] == "billig"
     assert len(normal) == 3 and all(v["id"] != "billig" for v in normal)
+
+
+async def test_tilbud_uden_for_soegningen_kommer_med():
+    """Et tilbud, som søgningen ikke viser, skal stadig kunne vælges. Irrelevante tilbud må ikke."""
+    tilbud = [
+        Vare("dyb", "tilbud", "Kyllingebryst", Decimal(30), enhedspris=Decimal(60), tilbud="-25 %"),
+        Vare("dyb", "andet", "Vaskepulver", Decimal(5), enhedspris=Decimal(1)),
+        # fundet live: ender på søgeordet, men er noget helt andet
+        Vare("dyb", "indlaeg", "Trusseindlæg", Decimal(5), enhedspris=Decimal(1)),
+        Vare("dyb", "frost", "Hel and frost", Decimal(5), enhedspris=Decimal(1)),
+    ]
+    b = DybButik(tilbud)
+    (r,) = await sammenlign([b], [("kyllingebryst", 1)])
+    assert r.linjer[0].valgt.id == "tilbud"
+    assert all(v.id != "andet" for v in r.linjer[0].alternativer)
+    (r,) = await sammenlign([DybButik(tilbud)], [("ost", 1), ("æg", 1)])
+    assert r.mangler == ["ost", "æg"]  # trusseindlæg er ikke æg, frost er ikke ost
+
+
+def test_tilbud_skal_matche_direkte():
+    indlaeg = Vare("x", "1", "Trusseindlæg", Decimal(5))
+    frilandsaeg = Vare("x", "2", "Frilandsæg", Decimal(5))
+    assert point("æg", indlaeg) == 1 and point("æg", indlaeg, sammensat=False) == 0
+    assert point("æg", frilandsaeg, sammensat=False) == 0  # søgningen finder den stadig
+    assert point("kyllingebryst", Vare("x", "3", "Kyllingebrystfilet", Decimal(5)), sammensat=False) == 1
+
+
+async def test_fejl_i_tilbud_stopper_ikke_sammenligningen():
+    from handle_mcp.butikker import ButikFejl
+
+    class TilbudFejler(DybButik):
+        async def tilbud(self, antal=25):
+            raise ButikFejl("tilbudssiden har ændret sig")
+
+    (r,) = await sammenlign([TilbudFejler()], [("kyllingebryst", 1)])
+    assert r.fejl is None and r.linjer[0].valgt.id == "billig"
 
 
 async def test_billigste_butik_foerst():
