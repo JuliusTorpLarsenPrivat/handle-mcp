@@ -39,11 +39,28 @@ OEKO_TILLAEG = 1.5  # med oeko=True må en økovare koste op til 50 % mere og st
 # Endelser der bare er bøjning af samme ord (efter æ→ae osv.): tomat/tomater, æble/æbler, løg/løgene.
 BOEJNINGER = {"", "e", "r", "er", "n", "en", "et", "ne", "ene", "erne", "s", "es"}
 # Endelser der kun siger noget om udskæring/form, så varen stadig er den samme: kyllingebrystfilet.
-FORMER = {"filet", "fileter", "koed", "tern", "strimler", "stykker"}
+FORMER = {"filet", "fileter", "koed", "tern", "strimler", "stykker", "ost"}  # feta/fetaost
+# Ord der betyder det samme i butikkernes navne: "svinekød" hedder tit "grisekød".
+SYNONYMER = {"svine": "grise", "grise": "svine", "frosne": "frost", "frossen": "frost", "frosset": "frost"}
+# Egenskaber der tæller fuldt, uanset om de står i navnet eller i mængden ("500 g / frost").
+EGENSKABER = {"frost", "oeko", "oekologisk", "okologisk"}
 
 
 def ord_i(tekst: str) -> set[str]:
-    return set(re.findall(r"[a-z0-9]+", tekst.lower().translate(ERSTAT)))
+    return set(_ordliste(tekst))
+
+
+def _ordliste(tekst: str) -> list[str]:
+    return re.findall(r"[a-z0-9]+", tekst.lower().translate(ERSTAT))
+
+
+def _varianter(o: str) -> set[str]:
+    """Ordet selv og dets synonymer ("svinekoed" → også "grisekoed", "frosne" → "frost")."""
+    ud = {o}
+    for fra, til in SYNONYMER.items():
+        if fra in o:
+            ud.add(o.replace(fra, til))
+    return ud
 
 
 def ord_point(oensket: str, har: str, sammensat: bool = True) -> float:
@@ -70,26 +87,50 @@ def ord_point(oensket: str, har: str, sammensat: bool = True) -> float:
 
 
 # Det der står efter "m.", "med", "i", "til", "tilsat", en parentes eller et komma, er smag
-# eller tilbehør: "Urtete m. fennikel" er te, "Boller i karry" er boller.
-TILBEHOER = re.compile(r"\s(?:m\.|med|i|til|tilsat)\s|[(,]")
+# eller tilbehør: "Urtete m. fennikel" er te, "Boller i karry" er boller. Et komma uden
+# mellemrum er et decimalkomma ("Letmælk 1,5%") og skiller ikke.
+TILBEHOER = re.compile(r"\s(?:m\.?|med|i|til|tilsat)\s|\(|,\s")  # også "m" uden punktum
+FYLDORD = {"i", "m", "med", "til", "tilsat", "og", "af", "a", "paa", "uden", "u"}  # "makrel i tomat"
+DYREORD = ("okse", "grise", "gris", "svine", "kalv", "lamme", "lam", "kylling", "kalkun", "and", "hjorte", "vildsvin")
 
 
 def point(soegning: str, vare: Vare, sammensat: bool = True) -> float:
     """Andelen af søgeordene, der passer med varen. Ord i varens hoveddel (og mærket) giver
-    fuldt point, ord i tilbehør eller mængde højst halvt."""
-    oensket = ord_i(soegning)
+    fuldt point, ord i tilbehør eller mængde højst halvt. Står der selv tilbehør i søgningen
+    ("makrel i tomat", "tun i vand"), tæller tilbehøret fuldt."""
+    oensket = ord_i(soegning) - FYLDORD
     if not oensket:
         return 0.0
     hoved, _, tilbehoer = _del(vare.navn)
-    fuld = ord_i(hoved) | ord_i(vare.maerke or "")
+    hovedord = _ordliste(hoved)
+    # Sammenskrevne nabo-ord: "Iceberg salat" passer på "icebergsalat"
+    fuld = set(hovedord) | {a + b for a, b in zip(hovedord, hovedord[1:])} | ord_i(vare.maerke or "")
     halv = ord_i(tilbehoer) | ord_i(vare.maengde or "")
+    loft = 1.0 if TILBEHOER.search(soegning.lower()) else 0.5
+    alle = fuld | halv
 
     def bedste(o: str) -> float:
-        f = max((ord_point(o, h, sammensat) for h in fuld), default=0.0)
-        h = max((ord_point(o, x, sammensat) for x in halv), default=0.0)
-        return max(f, min(h, 0.5))
+        f = h = 0.0
+        for v in _varianter(o):
+            if v in EGENSKABER and v in alle:
+                return 1.0
+            f = max(f, max((ord_point(v, x, sammensat) for x in fuld), default=0.0))
+            h = max(h, max((ord_point(v, x, sammensat) for x in halv), default=0.0))
+            f = max(f, _dyr_og_stykke(v, alle, fuld))
+        return max(f, min(h, loft))
 
     return sum(bedste(o) for o in oensket) / len(oensket)
+
+
+def _dyr_og_stykke(o: str, alle: set[str], fuld: set[str]) -> float:
+    """"svinemørbrad" er "Mørbrad af gris": dyret foran, stykket som eget ord."""
+    for d in DYREORD:
+        rest = o[len(d):]
+        if o.startswith(d) and len(rest) >= 4 and rest in fuld:
+            dyr = {d, d.rstrip("e"), SYNONYMER.get(d, d), SYNONYMER.get(d, d).rstrip("e")}
+            if any(x in dyr or any(x.startswith(y) for y in dyr) for x in alle if x != rest):
+                return 1.0
+    return 0.0
 
 
 def _del(navn: str) -> tuple[str, str, str]:
@@ -110,23 +151,28 @@ def rangeret(
     Gratisvarer (0 kr, fx 'Undgå madspild' med kort holdbarhed) springes over: de er få og
     forsvinder hurtigt. Enhedspriser sammenlignes kun i samme enhed som de fleste af de bedste
     match (kr/l for mælk), så fx små portionspakker i kr/stk ikke snyder sig foran."""
-    vurderet = [(p, v) for v in varer if v.paa_lager and v.pris > 0 and (p := point(soegning, v)) > 0]
+    oensket = ord_i(soegning)
+    mad = not _ikke_mad_ord(oensket)  # søger man selv efter ikke-mad, må den gerne komme med
+    vurderet = [
+        (p, v)
+        for v in varer
+        if v.paa_lager and v.pris > 0 and not (mad and er_ikke_mad(v)) and (p := point(soegning, v)) > 0
+    ]
     if not vurderet:
         return []
     top = max(p for p, _ in vurderet)
     enheder = Counter(v.enhed for p, v in vurderet if p == top)
     hovedenhed = enheder.most_common(1)[0][0]
 
-    oensket = ord_i(soegning)
-
     def noegle(pv: tuple[float, Vare]):
         p, v = pv
         rabat = OEKO_TILLAEG if oeko and er_oeko(v) else 1  # øko må koste lidt mere
-        kost = pris_for_behov(v, behov_)
+        kost = skoennet_pris(v, behov_)
         enhedspris = v.enhedspris if v.enhedspris is not None else v.pris
         return (
             -p,
             er_forarbejdet(v, oensket),  # rå vare frem for pålæg, færdigret og indbagt
+            er_blanding(v, oensket),  # "Ærter" frem for "Ærter og gulerødder"
             har_tilbehoer(v),  # "Kartofler" frem for "Kartofler m. krydderurter"
             kost is None,  # varer, hvor vi kan regne pakkerne ud, først
             float(kost or 0) / rabat,
@@ -142,17 +188,49 @@ def rangeret(
 # baconleverpostej). Fundet i madplantest: kyllingebryst blev til pålæg, laks til indbagt laks.
 FORARBEJDET = (
     "indbagt", "paneret", "panerede", "marineret", "faerdigret", "suppe", "sauce", "dressing",
-    "snack", "nudler", "tops", "postej", "paalaeg", "skiver", "sandwich", "pizza", "burger",
+    "snack", "nudler", "tops", "postej", "paalaeg", "sandwich", "pizza", "burger",
     "nuggets", "pesto", "marmelade", "dip", "salat", "spread", "smoothie", "drik",
-    "roeget", "stegt", "stegte", "kogt", "kogte", "grillet", "grillede", "rullepoelse",
-)  # fmt: skip
+    "roeget", "stegt", "stegte", "kogt", "kogte", "grillet", "grillede", "rullepoelse", "snittet",
+    "flaaede", "hakkede", "pulled", "knust", "crispy", "skiveskaaret", "frugtstaenger",
+    "urtete", "bites", "slik", "kiks", "kage", "juice",
+)  # fmt: skip  Bøjninger tæller også: indbagt(e), snack(s)
+FORARBEJDET_HELE_ORD = {"te", "is"}  # korte ord, der kun må tælle som hele ord ("Grøn te")  ("skiver" er ikke med: stegeflæsk er altid i skiver)
+# Ord der også afslører forarbejdning først i et sammensat ord: "Kyllingebryst sandwichskiver"
+FORARBEJDET_FORLED = ("sandwich", "paalaeg")
 # Kødtyper: søger man efter én, er en vare med en anden kødtype i navnet en anden vare
-# (fundet live: "hakket oksekød" blev til "Hakket okse- og grisekød").
-DYR = ("okse", "grise", "svine", "kalv", "lam", "kylling", "kalkun", "and", "hjort", "vildsvin")
+# (fundet live: "hakket oksekød" blev til "Hakket okse- og grisekød"). Gris og svin er det samme.
+DYR = {"okse": "okse", "grise": "svin", "gris": "svin", "svine": "svin", "kalv": "kalv", "lam": "lam",
+       "kylling": "kylling", "kalkun": "kalkun", "and": "and", "hjort": "hjort", "vildsvin": "vildsvin"}  # fmt: skip
 
 
 def _dyr(ord_: set[str]) -> set[str]:
-    return {d for o in ord_ for d in DYR if o.startswith(d)}
+    return {k for o in ord_ for d, k in DYR.items() if o.startswith(d) and not (d == "and" and o != "and" and not o.startswith("ande"))}
+
+
+# Varer der ikke er mad, men dukker op i søgninger efter mad (fundet live: prydløg og
+# blomsterløg for "løg", buketter i "bdt." for persille, en gulvmoppe for basilikum).
+IKKE_MAD = ("prydloeg", "blomsterloeg", "moppe", "refill", "opvask", "toiletrens", "rengoering",
+            "vaskemiddel", "skyllemiddel", "shampoo", "saebe", "potteplante", "liljer", "clematis",
+            "tulipaner", "hyacint", "stilke", "gulvklud", "karklud", "strepsils", "pastil",
+            "tabletter", "amylmetacresol", "plaster", "vitamin")  # fmt: skip
+
+
+def _ikke_mad_ord(ord_: set[str]) -> bool:
+    return any(i in o for o in ord_ for i in IKKE_MAD)
+
+
+def er_ikke_mad(v: Vare) -> bool:
+    return _ikke_mad_ord(ord_i(" ".join(x for x in (v.navn, v.maengde) if x)))
+
+
+def er_blanding(v: Vare, oensket: set[str]) -> bool:
+    """"Ærter og gulerødder" er en blanding, når man søgte efter ærter: søgeordet står kun før "og"."""
+    hoved = _del(v.navn)[0].lower()
+    if " og " not in hoved or "og" in oensket:
+        return False
+    foer, efter = (ord_i(x) for x in hoved.split(" og ", 1))
+    ramt = lambda ord_: any(ord_point(o, x) >= 1 for o in oensket for x in ord_)  # noqa: E731
+    return ramt(foer) and not ramt(efter)
 
 
 def er_forarbejdet(v: Vare, oensket: set[str]) -> bool:
@@ -160,8 +238,13 @@ def er_forarbejdet(v: Vare, oensket: set[str]) -> bool:
     navn = ord_i(v.navn)
     for o in navn:
         for f in FORARBEJDET:
-            if o.endswith(f) and not any(f in s for s in oensket):
+            if any(o.endswith(f + b) for b in BOEJNINGER) and not any(f in s for s in oensket):
                 return True
+        for f in FORARBEJDET_FORLED:
+            if f in o and not any(f in s for s in oensket):
+                return True
+        if o in FORARBEJDET_HELE_ORD and o not in oensket:
+            return True
     soegt = _dyr(oensket)
     return bool(soegt and _dyr(navn) - soegt)
 
@@ -185,12 +268,30 @@ def antal_pakker(v: Vare, behov_: Maengde | None) -> int | None:
     if behov_ is None:
         return None
     stoerrelse = pakkestoerrelse(v.maengde, v.navn, enhed=behov_.enhed)
-    return pakker(behov_, stoerrelse) if stoerrelse else None
+    if stoerrelse:
+        return pakker(behov_, stoerrelse)
+    if behov_.enhed == "stk" and behov_.tal == 1:
+        return 1  # "1 stk hel kylling" / "1 stk broccoli": én pakke, uanset om den sælges efter vægt
+    return None
 
 
 def pris_for_behov(v: Vare, behov_: Maengde | None) -> Decimal | None:
     n = antal_pakker(v, behov_)
     return v.pris * n if n else None
+
+
+# Kun vægt og rumfang: "kr/stk" kan være pr. tebrev i en æske, ikke pr. vare (fundet live).
+ENHED_TIL_GRUND = {"kg": ("g", 1000), "l": ("ml", 1000)}
+
+
+def skoennet_pris(v: Vare, behov_: Maengde | None) -> Decimal | None:
+    """Prisen for behovet, eller et skøn ud fra enhedsprisen, når pakkestørrelsen ikke står
+    der (fundet live: bananer sælges pr. stk uden vægt, så dyre Saba-bananer vandt)."""
+    if (kost := pris_for_behov(v, behov_)) is not None:
+        return kost
+    if behov_ and v.enhedspris is not None and (g := ENHED_TIL_GRUND.get(v.enhed or "")) and g[0] == behov_.enhed:
+        return v.enhedspris * Decimal(str(behov_.tal / g[1]))
+    return None
 
 
 def bedste(soegning: str, varer: list[Vare], behov_: Maengde | None = None, oeko: bool = False) -> tuple[list[Vare], float]:

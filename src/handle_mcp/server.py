@@ -51,6 +51,14 @@ LOKAL_SKRIVER = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempo
 ALLE = ["nemlig", "bilka"]
 
 
+def _butik(navn: str):
+    """Butikken, eller en forståelig fejl til Claude ved et ukendt navn (fx "coop")."""
+    try:
+        return hent_butik(navn)
+    except ButikFejl as fejl:
+        raise ToolError(str(fejl)) from None
+
+
 async def _koer(kald) -> Any:
     """Kør et butikskald, rens persondata og gør fejl forståelige for Claude."""
     try:
@@ -71,10 +79,10 @@ async def soeg_varer(
     prøv flere søgetekster (fx "kyllingebryst øko", "kyllingeinderfilet"), før du vælger."""
     antal = max(1, min(antal, 30))
     if not billigst_foerst:
-        return await _koer(hent_butik(butik).soeg(tekst, antal))
+        return await _koer(_butik(butik).soeg(tekst, antal))
 
     async def billigst() -> list:
-        b = hent_butik(butik)
+        b = _butik(butik)
         rent, behov_ = behov(tekst)
         varer = await kandidater(b, rent, await hent_tilbud(b))
         return [
@@ -88,7 +96,9 @@ async def soeg_varer(
 @mcp.tool(annotations=LAESER)
 async def ugens_tilbud(butik: str = "nemlig", antal: int = 25) -> Any:
     """Ugens tilbud i én butik. nemlig: Skarp pris, Priskup, Dagstilbud og Undgå madspild."""
-    return await _koer(hent_butik(butik).tilbud(min(antal, 50)))
+    antal = max(1, min(antal, 50))
+    # nemlig har flere tilbudslister, og butikken giver `antal` pr. liste: skær ned til i alt `antal`
+    return (await _koer(_butik(butik).tilbud(antal)))[:antal]
 
 
 @mcp.tool(annotations=LAESER)
@@ -159,7 +169,7 @@ async def sammenlign_liste(
 @mcp.tool(annotations=LAESER)
 async def vis_kurv(butik: str = "nemlig") -> Any:
     """Kurvens linjer, gebyrer, total, minimumskøb og valgt leveringstid."""
-    return await _koer(hent_butik(butik).kurv())
+    return await _koer(_butik(butik).kurv())
 
 
 @mcp.tool(annotations=SKRIVER)
@@ -168,7 +178,7 @@ async def saet_antal_i_kurv(butik: str, antal: dict[str, int]) -> Any:
     (ikke et tillæg), og 0 fjerner varen. Ændrer KUN kurven. Spørg brugeren først."""
     if any(n < 0 or n > 50 for n in antal.values()):
         raise ToolError("Antal skal være mellem 0 og 50.")
-    return await _koer(hent_butik(butik).saet_antal(antal))
+    return await _koer(_butik(butik).saet_antal(antal))
 
 
 @mcp.tool(annotations=LOKAL_LAESER)
@@ -271,13 +281,13 @@ async def fjern_opskrift(navn: str) -> Any:
 @mcp.tool(annotations=LAESER)
 async def leveringstider(butik: str = "nemlig", dage: int = 5) -> Any:
     """Ledige leveringstider med pris. Kun til orientering: brugeren vælger selv tiden."""
-    return await _koer(hent_butik(butik).leveringstider(min(dage, 14)))
+    return await _koer(_butik(butik).leveringstider(min(dage, 14)))
 
 
 @mcp.tool(annotations=LAESER)
 async def tidligere_ordrer(butik: str = "nemlig", antal: int = 10, ordre_id: str | None = None) -> Any:
     """Tidligere ordrer. Med ordre_id: varerne i den ordre (godt til 'det vi plejer at købe')."""
-    b = hent_butik(butik)
+    b = _butik(butik)
     return await _koer(b.ordre(ordre_id) if ordre_id else b.ordrer(min(antal, 30)))
 
 

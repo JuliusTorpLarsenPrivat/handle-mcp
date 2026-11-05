@@ -12,9 +12,12 @@ import re
 from dataclasses import dataclass
 
 # tal, evt. "N x" foran, og en enhed. "12 x 400 g", "1,50 kg", "0.5 l", "2 stk."
-MAENGDE = re.compile(r"(?:(\d+)\s*x\s*)?(\d+(?:[.,]\d+)?)\s*(kg|g|gr|l|ltr|dl|cl|ml|stk|stk\.)(?![a-zæøå])", re.I)
+MAENGDE = re.compile(r"(?:(\d+)\s*x\s*)?(\d+(?:[.,]\d+)?)\s*(kg|g|gr|l|ltr|dl|cl|ml|stk|bdt|bundt|pk|pakke|pakker|bakke|ps)\.?(?![a-zæøå])", re.I)
 GRUND = {"kg": ("g", 1000), "g": ("g", 1), "gr": ("g", 1), "l": ("ml", 1000), "ltr": ("ml", 1000),
-         "dl": ("ml", 100), "cl": ("ml", 10), "ml": ("ml", 1), "stk": ("stk", 1), "stk.": ("stk", 1)}
+         "dl": ("ml", 100), "cl": ("ml", 10), "ml": ("ml", 1), "stk": ("stk", 1), "bdt": ("stk", 1),
+         "bundt": ("stk", 1), "pk": ("stk", 1), "pakke": ("stk", 1), "pakker": ("stk", 1),
+         "bakke": ("stk", 1), "ps": ("stk", 1)}  # fmt: skip
+ANTAL_X = re.compile(r"(\d+)\s*x\s*\d")  # "8 x 40 g" er 8 stk
 MAKS_PAKKER = 20
 
 
@@ -51,6 +54,10 @@ def pakkestoerrelse(*tekster: str | None, enhed: str) -> float | None:
         for m in MAENGDE.finditer(t or ""):
             if (mg := _laes(m)).enhed == enhed and mg.tal > 0:
                 return mg.tal
+    if enhed == "stk":
+        for t in tekster:
+            if m := ANTAL_X.search(t or ""):
+                return float(m.group(1))
     return None
 
 

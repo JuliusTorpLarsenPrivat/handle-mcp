@@ -44,7 +44,7 @@ def _ord(navn: str) -> list[str]:
 
 # Flere ord fra Brugsens kvitteringer (forkortelser og sammensatte ord), fundet i jeres data
 EKSTRA = {
-    "ikke mad": ("COLOR", "POWER", "TABS", "MULEPOSE", "LOTUS", "PLASTER"),
+    "ikke mad": ("COLOR", "POWER", "TABS", "MULEPOSE", "PLASTER"),  # ikke LOTUS: også kiks
     "snacks og søde sager": ("SUNCHINE", "CANDY", "DESSERT", "TYRKISK"),
     "drikkevarer": ("KONDI", "FAXE", "GRANT", "CHARDONNAY"),
     "fisk": ("ROGN",),
