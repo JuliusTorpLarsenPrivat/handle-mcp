@@ -113,3 +113,57 @@ async def test_vaerktoejet_i_serveren():
     gem(kv("2026-10-01", ("MÆLK", 10, 0)), kv("2026-10-08", ("MÆLK", 10, 0)), kv("2026-10-15", ("MÆLK", 10, 0)))
     svar = await server.koebsmoenster(1.0)
     assert svar["basisvarer"][0]["vare"] == "MÆLK"
+
+
+# --- basisvarer pr. type (Julius: "der skal laves et system for basisvarer") ---------------
+
+
+@pytest.mark.parametrize(
+    "navn, typ",
+    [
+        ("FRILANDSÆG 10 STK", "æg"), ("ÆG M/L 8 STK", "æg"), ("ØKO THISE SMØR 200 G", "smør"),
+        ("ØKO GRÆSMÆLK", "mælk"), ("ØKO HVEDEMEL", "hvedemel"), ("ØKO SPAGHETTI", "pasta"),
+        ("ØKO DARK CHOKOLADE", "mørk chokolade"), ("SORT PEBER KVÆRN", "peber"),
+        ("TANDPASTA 2-PAK", None), ("ØFFER SALT 75G", None), ("FAZER TYRKISK PEBER", None),
+        ("GRØN PEBER", None), ("ØKO PEBERFRUGTER", None),
+    ],
+)
+def test_basistype(navn, typ):
+    assert historik.basistype(navn) == typ
+
+
+def test_basisvarer_status_pr_type():
+    from datetime import date
+
+    from handle_mcp.lokal import skriv
+
+    def kv(dag, *varer):
+        return {"tid": f"2026-10-{dag:02d}T10:00:00+00:00", "total": 100, "butik": "x", "varer": [{"navn": v, "pris": 10} for v in varer]}
+
+    skriv("coop_kvitteringer", {"kvitteringer": [
+        kv(1, "FRILANDSÆG 10 STK", "ØKO HVEDEMEL"), kv(11, "ÆG M/L 8 STK"), kv(21, "FRILANDSÆG 10 STK", "ØKO HVEDEMEL"),
+    ]})
+    status = {b["type"]: b for b in historik.basisvarer(date(2026, 10, 30))}
+    assert status["æg"]["gange"] == 3 and status["æg"]["typisk_interval_dage"] == 10
+    assert status["æg"]["status"] == "snart tom" and status["æg"]["sted"] == "køl"  # 9 dage ≥ 0,8 × 10
+    assert status["hvedemel"]["status"] == "købt for nylig" and status["hvedemel"]["sted"] == "skab"  # 9 < 0,5 × 20
+    assert historik.moenster(i_dag=date(2026, 10, 30))["basisvarer_pr_type"]
+
+
+async def test_butiksordrer_taeller_med():
+    from decimal import Decimal
+
+    from handle_mcp.data import Kurvlinje, Ordre
+
+    class Butik:
+        navn = "nemlig"
+
+        async def ordrer(self, antal):
+            return [Ordre("nemlig", "o1", "Leveret", Decimal(100), "2026-10-25T08:00:00"), Ordre("nemlig", "o2", "Annulleret", None, "2026-10-26T08:00:00")]
+
+        async def ordre(self, oid):
+            return Ordre("nemlig", oid, "Leveret", Decimal(42), "2026-10-25T08:00:00", [Kurvlinje("1", "Økologiske æg M/L", 1, Decimal(42))])
+
+    assert await historik.hent_butiksordrer([Butik()]) == 1
+    assert await historik.hent_butiksordrer([Butik()]) == 0  # kun én gang
+    assert {b["type"] for b in historik.basisvarer()} == {"æg"}

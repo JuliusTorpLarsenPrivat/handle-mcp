@@ -113,3 +113,11 @@ async def test_forloebet_fra_tredje_test(tg):
     f = (await server.ugeplan_forloeb())["forloeb"]
     assert "ERSTATTER køleskabsdelen" in f and "MEDREGNET retter af det, vi har hjemme" in f
     assert "Kød er ALTID øko eller vores eget vildt" in f
+
+
+async def test_forloebet_har_basisvarelister(tg):
+    """Julius: "jeg regner med, I har XYZ" er ikke godt nok. Køber/Tjek-lister i stedet."""
+    kobl_paa(1)
+    f = (await server.ugeplan_forloeb())["forloeb"]
+    assert "Køber til ugen:" in f and "Tjek, at I har:" in f and "basisvarer_pr_type" in f
+    assert "ALDRIG med kølevarer" in f and "regner med, vi HAR hjemme" not in f

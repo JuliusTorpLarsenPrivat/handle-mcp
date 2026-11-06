@@ -20,7 +20,7 @@ from datetime import date, datetime
 
 from handle_mcp.lokal import LokalFejl, laes
 
-KILDER = ("coop_kvitteringer",)
+KILDER = ("coop_kvitteringer", "butik_ordrer")  # butik_ordrer: jeres ordrer hos nemlig og Bilka
 
 # Rækkefølgen betyder noget: første kategori, der passer, vinder ("FLÆSKESVÆR" er snacks,
 # ikke kød, og "KOLDSKÅL" er mejeri, ikke kål). Ord matcher i starten af et ord i varenavnet.
@@ -193,4 +193,116 @@ def moenster(andel_af_indkoeb: float = 1.0, i_dag: date | None = None, top: int 
         "oeko_andel": round(oeko / linjer, 2) if linjer else 0,
         "favoritter": favoritter,
         "basisvarer": basis[:top],
+        # pr. type (æg, smør, mel …), til madplanens basisvareliste (se ugeplan.py)
+        "basisvarer_pr_type": basisvarer(i_dag),
     }
+
+
+# --- basisvarer pr. type --------------------------------------------------------------
+# Julius: "der skal laves et system for basisvarer". Kvitteringerne har mange navne for samme
+# basisvare ("FRILANDSÆG 10 STK", "ÆG M/L 8 STK"), så de samles pr. type. `sted` er køl eller
+# skab: kølevarer holder kort tid, så dem regner vi ikke med, at I har, uden at I har sagt det.
+BASISTYPER: dict[str, tuple[str, tuple[str, ...]]] = {
+    "æg": ("køl", ("ÆG", "FRILANDSÆG", "SKRABEÆG", "ÆGGEHVIDE")),
+    "smør": ("køl", ("SMØR",)),
+    "mælk": ("køl", ("MÆLK", "GRÆSMÆLK", "SØDMÆLK", "LETMÆLK", "MINIMÆLK", "SKUMMETMÆLK")),
+    "græsk yoghurt": ("køl", ("GRÆSK",)),
+    "skyr": ("køl", ("SKYR",)),
+    "fløde": ("køl", ("FLØDE", "PISKEFLØDE", "MADLAVNINGSFLØDE")),
+    "creme fraiche": ("køl", ("CREME", "FRAICHE")),
+    "feta": ("køl", ("FETA",)),
+    "parmesan": ("køl", ("PARMESAN", "GRANA", "PARMIGIANO")),
+    "citroner": ("køl", ("CITRON", "CITRONER")),
+    "lime": ("køl", ("LIME",)),
+    "løg": ("skab", ("LØG", "RØDLØG", "SKALOTTELØG")),
+    "hvidløg": ("skab", ("HVIDLØG",)),
+    "kartofler": ("skab", ("KARTOFLER",)),
+    "gulerødder": ("køl", ("GULERØD", "GULERØDDER")),
+    "rugbrød": ("skab", ("RUGBRØD",)),
+    "hvedemel": ("skab", ("MEL", "HVEDEMEL")),
+    "olivenolie": ("skab", ("OLIVENOLIE",)),
+    "olie": ("skab", ("RAPSOLIE", "SOLSIKKEOLIE")),
+    "sukker": ("skab", ("SUKKER", "RØRSUKKER")),
+    "salt": ("skab", ("SALT", "FLAKSALT", "HAVSSALT")),
+    "peber": ("skab", ("PEBER",)),
+    "bouillon": ("skab", ("BOUILLON", "FOND")),
+    "ris": ("skab", ("RIS", "JASMINRIS", "BASMATI")),
+    "pasta": ("skab", ("PASTA", "SPAGHETTI", "PENNE", "FUSILLI", "RIGATONI", "LASAGNE")),
+    "havregryn": ("skab", ("HAVREGRYN",)),
+    "sennep": ("skab", ("SENNEP", "DIJON")),
+    "tomatpuré": ("skab", ("TOMATPURÉ", "TOMATPURE")),
+    "hakkede tomater": ("skab", ("HAKKEDE", "PASSATA")),
+    "kokosmælk": ("skab", ("KOKOSMÆLK",)),
+    "mandler": ("skab", ("MANDLER",)),
+    "mørk chokolade": ("skab", ("DARK", "MØRK")),
+    "eddike": ("skab", ("EDDIKE",)),
+    "soja": ("skab", ("SOJA",)),
+    "honning": ("skab", ("HONNING",)),
+}
+
+
+def basistype(navn: str) -> str | None:
+    ord_ = _ord(navn)
+    if any(o in ("PEBERFRUGT", "PEBERFRUGTER", "PEBERMYNTE") for o in ord_):  # ikke peber
+        return None
+    if {"GRØN", "RØD", "GUL"} & set(ord_) and "PEBER" in ord_:  # "RØD PEBER" er en peberfrugt
+        return None
+    kat = kategori(navn)
+    if kat in ("ikke mad", "drikkevarer") or (kat == "snacks og søde sager" and "CHOKOLADE" not in ord_):
+        return None  # TANDPASTA er ikke pasta, ØFFER SALT ikke salt, TYRKISK PEBER ikke peber
+    for typ, (_, noegler) in BASISTYPER.items():
+        if any(o == n or (len(n) >= 5 and o.endswith(n)) for n in noegler for o in ord_):
+            return typ
+    return None
+
+
+def basisvarer(i_dag: date | None = None) -> list[dict]:
+    """Status pr. basisvaretype ud fra kvitteringerne: hvor ofte I køber den, hvornår sidst, og
+    om den nok er ved at være tom. Varetyper uden køb står ikke her (dem ved vi intet om)."""
+    i_dag = i_dag or date.today()
+    datoer: dict[str, set] = defaultdict(set)
+    for k in kvitteringer():
+        for v in k["varer"]:
+            if typ := basistype(varenavn(v["navn"])):
+                datoer[typ].add(_dato(k))
+    ud = []
+    for typ, ds_ in datoer.items():
+        ds = sorted(ds_)
+        siden = (i_dag - ds[-1]).days
+        interval = statistics.median((b - a).days for a, b in zip(ds, ds[1:])) if len(ds) >= 2 else None
+        if interval is None:
+            status = "købt én gang"
+        elif siden >= 0.8 * interval:
+            status = "snart tom"
+        elif siden < 0.5 * interval:
+            status = "købt for nylig"
+        else:
+            status = "midt i perioden"
+        ud.append({"type": typ, "sted": BASISTYPER[typ][0], "gange": len(ds), "typisk_interval_dage": interval, "dage_siden_sidst": siden, "status": status})
+    return sorted(ud, key=lambda b: (b["sted"], b["type"]))
+
+
+async def hent_butiksordrer(butikker: list, antal: int = 10) -> int:
+    """Læg jeres ordrer hos nemlig og Bilka ind i købsmønstret, så æg købt via handle også
+    tæller. Kun ordrer, der ikke allerede er gemt. Giver antal nye. Fejl springes over."""
+    from handle_mcp.lokal import laes as _laes
+
+    kendte = {str(k.get("id")) for k in _laes("butik_ordrer").get("kvitteringer", [])}
+    nye = []
+    for b in butikker:
+        try:
+            for o in await b.ordrer(antal):
+                if not o.id or o.id in kendte or "annul" in (o.status or "").lower():
+                    continue
+                try:
+                    datetime.fromisoformat(str(o.dato).replace("Z", "+00:00"))
+                except ValueError:
+                    continue
+                d = await b.ordre(o.id)
+                varer = [{"navn": ln.navn.upper(), "pris": float(ln.beloeb)} for ln in d.linjer]
+                nye.append({"id": o.id, "tid": str(o.dato), "total": float(d.i_alt or 0), "butik": b.navn, "varer": varer})
+        except Exception:  # noqa: BLE001  ordrehistorikken er en bonus, ikke en forudsætning
+            continue
+    if nye:
+        flet_kvitteringer(nye, kilde="butik_ordrer")
+    return len(nye)

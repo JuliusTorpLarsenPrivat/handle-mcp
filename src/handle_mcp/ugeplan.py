@@ -67,16 +67,15 @@ TRIN 2: MENUEN (uden priser, men med et prisskøn)
    søgninger), og skøn de faste måltider for sig. Læg levering og poser til (nemlig ca. 36 kr
    levering + ca. 18 kr poser). Hold det samlede skøn under ugens budget.
 5. Send menuen kort: én linje pr. dag med ret, tid og skønnet pris, én linje med de faste
-   måltider og deres skøn, og det samlede skøn mod ugens budget. Skriv så, hvad du regner med,
-   vi HAR hjemme og derfor ikke køber (fx æg, citron, dijon, olie, krydderier), så vi kan rette
-   det nu og ikke efter prissætningen. Spørg: "Rettelser, eller er menuen god?" Vent på svaret.
+   måltider og deres skøn, og det samlede skøn mod ugens budget. Tilføj BASISVARER (se
+   nedenfor). Spørg: "Rettelser, eller er menuen god?" Vent på svaret.
 6. Ret menuen, til den er god. Gør det en rettelse meget dyrere, så sig det og foreslå et
    alternativ. Følg ØNSKER TIL FREMOVER nedenfor. Først når menuen er godkendt, går du videre.
 
 TRIN 3: PRISEN
 7. Lav indkøbslisten ud fra opskrifternes ingredienser og de faste måltider, med mængder til
    vores antal personer og dage, minus det vi har hjemme (og det vi bekræftede i trin 2). Tag
-   basisvarer med, der er snart_tom. Prissæt i begge butikker med sammenlign_liste (oekologisk
+   alle basisvarer fra "Køber" med (se BASISVARER). Prissæt i begge butikker med sammenlign_liste (oekologisk
    efter profilen). Overhold profilens vareønsker (fx kakaoprocent). Vær grundig: gå
    alternativerne igennem, søg igen på usikre linjer, og vælg ud fra pris, mængde og kvalitet.
 8. Følg `anbefaling` fra sammenlign_liste: én butik, eller begge, når det samlet er billigst med
@@ -122,6 +121,24 @@ Fundet i en test: alle laks i Bilka var enten opdrættede, frosne eller kunne ik
   den gamle ret, tjek kurven med vis_kurv, og send én kort besked: hvad der er skiftet,
   hvorfor, og den nye total. Spørg kun først, hvis den nye total bliver over ugens budget,
   eller hvis husstanden selv har bedt om netop den ret.
+
+BASISVARER (Julius: "jeg regner med, I har …" er ikke godt nok)
+Gæt aldrig stille. Hver basisvare, som ugens retter og faste måltider skal bruge (æg, smør,
+mælk, fløde, citron, løg, hvidløg, mel, olie, sukker, salt, peber, bouillon, sennep, ris, pasta
+osv.), står i menubeskeden på én af to lister, så vi kan tjekke køleskab og skab, før der
+handles, og ikke mangler noget midt i madlavningen:
+  Køber til ugen: <basisvare (til hvad)>, …
+  Tjek, at I har: <basisvare (til hvad)>, …
+  "Skriv 'har X' eller 'køb Y', hvis noget skal flyttes."
+Sådan fordeles de (brug koebsmoenster → basisvarer_pr_type og svaret om køleskabet):
+- Nævnt i svaret om køleskabet, eller i beholdningen → ingen af listerne (vi har det).
+- Kølevare (sted "køl": æg, smør, mælk, fløde, citron …) → Køber, medmindre den er "købt for
+  nylig". Så står den under Tjek. Vi regner ALDRIG med kølevarer, vi ikke har nævnt.
+- Skabsvare (sted "skab": mel, olie, salt, ris …) → Tjek, medmindre den er "snart tom" eller
+  ukendt for os. Så står den under Køber.
+- Mængden tæller: skal ugen bruge meget (fx 10 æg), så Køber, også selvom den er købt for nylig.
+- Retter vi listerne, så følg det i indkøbslisten, og gem et "har altid" i profilen som et
+  vareønske (fx "Salt, peber, olie: har vi altid").
 
 ØNSKER TIL FREMOVER (gælder hele forløbet)
 - Siger husstanden på nogen måde, at noget skal huskes til fremover ("husk", "fra nu af",
@@ -202,12 +219,31 @@ def _beskeder_siden_sidst() -> list[dict]:
         return []
 
 
+HENT_ORDRER = True  # slås fra i testene (ingen rigtige butikskald)
+
+
+async def _hent_ordrer() -> None:
+    """Jeres ordrer hos nemlig/Bilka tæller med i basisvarernes købsmønster. Fejler det (fx intet
+    net), kører madplanen videre uden."""
+    try:
+        import asyncio
+
+        from handle_mcp import butikker as butik_modul
+        from handle_mcp import historik
+
+        await asyncio.wait_for(historik.hent_butiksordrer([butik_modul.hent_butik(n) for n in ("nemlig", "bilka")]), 25)
+    except Exception:  # noqa: BLE001
+        pass
+
+
 async def start() -> dict:
     """Start madplanen: send det første spørgsmål på Telegram, hvis det er sat op."""
     try:
         beholdning.ryd_gammelt_koeleskab()  # gamle rester må ikke komme med i menuen
     except LokalFejl:
         pass
+    if HENT_ORDRER:
+        await _hent_ordrer()
     if telegram_klar():
         tidligere = _beskeder_siden_sidst()
         try:
