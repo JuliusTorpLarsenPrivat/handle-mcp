@@ -120,7 +120,14 @@ def point(soegning: str, vare: Vare, sammensat: bool = True) -> float:
             f = max(f, _dyr_og_stykke(v, alle, fuld))
         return max(f, min(h, loft))
 
-    return sum(bedste(o) for o in oensket) / len(oensket)
+    resultat = sum(bedste(o) for o in oensket) / len(oensket)
+    if EFTERLIGNING.search(vare.navn) and not EFTERLIGNING.search(soegning):
+        return min(resultat, 0.5)  # "Græskinspireret yoghurt" er ikke græsk yoghurt (fundet i test 3)
+    return resultat
+
+
+# Varer, der efterligner noget: "græskinspireret", "græsk-stil", "skyr-type", "à la".
+EFTERLIGNING = re.compile(r"inspireret|[-\s]stil\b|[-\s]type\b|\b(?:a|à) la\b|\bimitation", re.I)
 
 
 def _dyr_og_stykke(o: str, alle: set[str], fuld: set[str]) -> float:

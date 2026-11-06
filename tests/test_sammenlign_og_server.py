@@ -220,3 +220,10 @@ async def test_serveren_starter_og_viser_vaerktoejer():
         navne = {t.name for t in (await s.list_tools()).tools}
     assert {"soeg_varer", "sammenlign_liste", "saet_antal_i_kurv", "vis_kurv"} <= navne
     assert not any(ord_ in n for n in navne for ord_ in ("bestil", "betal", "order", "pay"))
+
+
+@pytest.mark.parametrize("navn", ["Græskinspireret yoghurt øko.", "Yoghurt græsk-stil", "Yoghurt græsk type 10%"])
+def test_efterligning_er_ikke_varen(navn):
+    """Fundet i test 3: "Græskinspireret yoghurt" blev valgt til græsk yoghurt."""
+    assert point("græsk yoghurt", Vare("x", "1", navn, Decimal(20))) <= 0.5
+    assert point("græsk yoghurt", Vare("x", "2", "Græsk yoghurt 10% øko.", Decimal(30))) == 1
