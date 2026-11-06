@@ -139,6 +139,8 @@ async def test_svar_gemmes_og_laeses_af_claude(tg):
     await telegram.hent_og_haandter(0)
     nye = await server.vis_beskeder()
     assert [(b["fra"], b["tekst"]) for b in nye] == [("person1", "2 løg og en halv pakke smør")]
+    # fundet live: et felt kaldet "tid" blev fjernet af persondatafilteret
+    assert nye[0]["modtaget"].startswith("20") and "[fjernet]" not in str(nye)
     assert await server.vis_beskeder() == []  # nu læst
 
 

@@ -151,7 +151,8 @@ def _gem_besked(fra: str, tekst: str) -> None:
 def beskeder(kun_nye: bool = True, marker_laest: bool = True) -> list[dict]:
     d = laes("beskeder")
     alle = d.get("beskeder", [])
-    ud = [dict(b) for b in alle if not (kun_nye and b.get("laest"))]
+    # "modtaget", ikke "tid": persondatafilteret fjerner felter, der hedder "tid" (Bilkas bruger-id)
+    ud = [{"modtaget": b["tid"], "fra": b["fra"], "tekst": b["tekst"]} for b in alle if not (kun_nye and b.get("laest"))]
     if marker_laest and any(not b.get("laest") for b in alle):
         for b in alle:
             b["laest"] = True
