@@ -90,3 +90,11 @@ async def test_beskeder_fra_mellem_madplanerne_kommer_med_foer_spoergsmaalet(tg)
     f = svar["forloeb"]
     assert "beskeder_siden_sidst" in f and "fra_husstanden" in f and "ØNSKER TIL FREMOVER" in f
     assert "Højst ét sådant spørgsmål" in f and "Nævn ikke for husstanden" in f
+
+
+async def test_forloebet_dækker_ret_der_ikke_kan_koebes(tg):
+    """Fundet i en test: ingen laks i Bilka passede til profilen. Retten skal skiftes ud."""
+    kobl_paa(1)
+    f = (await server.ugeplan_forloeb())["forloeb"]
+    assert "NÅR EN RET IKKE KAN KØBES" in f and "også efter at menuen er godkendt" in f
+    assert "Ændret:" in f and "EFTER \"bestil\"" in f and "ikke lade" in f

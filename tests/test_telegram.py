@@ -398,3 +398,31 @@ def test_oensker_fra_demoen_fanges(tekst):
     from handle_mcp import profil
 
     assert profil.er_huskeoenske(tekst)
+
+
+class ButikDerAfviserLaks(FalskButik):
+    async def saet_antal(self, antal):
+        self.kald.append(dict(antal))
+        return [
+            AntalResultat(i, n, 0 if i == "laks" else n, i != "laks", "Du kan desværre ikke bestille dette produkt til HD Odense" if i == "laks" else None)
+            for i, n in antal.items()
+        ]
+
+
+@pytest.mark.parametrize("claude_i_gang", [True, False])
+async def test_vare_der_ikke_kom_i_kurven_giver_besked_om_erstatning(tg, monkeypatch, claude_i_gang):
+    """Fundet i en test: laksen kunne ikke leveres, og der stod bare "betal i appen"."""
+    monkeypatch.setattr(server, "hent_butik", lambda _n: ButikDerAfviserLaks())
+    par(tg, 1)
+    await telegram.hent_og_haandter(0)
+    linjer = [{"vare_id": "laks", "navn": "Laks", "antal": 1, "pris": 50.0}, {"vare_id": "kart", "navn": "Kartofler", "antal": 1, "pris": 15.0}]
+    await server.gem_madplan("bilka", ["Tor: Laks"], linjer)
+    import time
+
+    skriv("claude-aktiv", {"sidst": time.time() if claude_i_gang else 0})
+    tg.besked(1, "bestil")
+    await telegram.hent_og_haandter(0)
+    sidste = tg.sendt[-1][1]
+    assert "HD Odense" in sidste and "betal i appen" not in sidste and "Vent med at betale" in sidste
+    assert (telegram.ERSTATNING_LYTTER in sidste) is claude_i_gang
+    assert (telegram.ERSTATNING_IKKE_LYTTER in sidste) is not claude_i_gang

@@ -78,6 +78,29 @@ TRIN 4: BESTIL
     sig præcis hvad og hvorfor.
 13. Bestil og betal aldrig selv: vi vælger leveringstid og betaler i butikkens app.
 
+NÅR EN RET IKKE KAN KØBES ORDENTLIGT (også efter at menuen er godkendt)
+Fundet i en test: alle laks i Bilka var enten opdrættede, frosne eller kunne ikke leveres.
+- Kan en rets hovedingrediens ikke købes, så den passer til profilen (ikke på lager, kan ikke
+  leveres, frost/opdræt når profilen siger nej, langt over prisskønnet), så må du skifte
+  RETTEN ud. Du skal ikke bare tage den næstbedste vare, der bryder profilen, og ikke lade
+  dagen stå tom: der skal stadig være mad til alle de aftener, vi bad om.
+- Prøv i denne rækkefølge, og tag den første, der virker:
+  1. Samme ret med en anden god udgave af varen (anden størrelse eller mærke, eller den anden
+     butik, hvis det samlet stadig er billigst).
+  2. En ret med samme tilbehør og en anden protein, der passer til profilen og dagens tid
+     (fx laks med kartofler og broccoli → svinemørbrad eller kylling med kartofler og
+     broccoli). Undgå en protein, der allerede er på menuen samme uge.
+  3. En helt anden ret fra vores opskriftssider til samme dag og tid.
+  Hold prisen på niveau med den gamle ret, og fjern de varer, der kun var til den gamle ret.
+- Sker det FØR "bestil" (under prissætningen): skift retten, prissæt den, og skriv øverst i
+  prisbeskeden "Ændret: Tor laks → svinemørbrad med kartofler og broccoli (ingen vildfanget
+  fersk laks i Bilka)". "bestil" godkender så også ændringen. Ingen ekstra spørgsmål.
+- Sker det EFTER "bestil" (botten melder, at en vare ikke kom i kurven): find erstatningen
+  efter samme rækkefølge, læg den i kurven med saet_antal_i_kurv, fjern varer der kun var til
+  den gamle ret, tjek kurven med vis_kurv, og send én kort besked: hvad der er skiftet,
+  hvorfor, og den nye total. Spørg kun først, hvis den nye total bliver over ugens budget,
+  eller hvis husstanden selv har bedt om netop den ret.
+
 ØNSKER TIL FREMOVER (gælder hele forløbet)
 - Siger husstanden på nogen måde, at noget skal huskes til fremover ("husk", "fra nu af",
   "altid", "aldrig", "vi kan ikke lide …", "næste gang …", "gem det"), så gem det i profilen

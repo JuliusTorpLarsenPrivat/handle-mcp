@@ -327,8 +327,11 @@ async def _godkendelse(chat_id: str, navn: str, tekst: str) -> bool:
     flere = " + " in svar["butik"]
     besked = f"{navn} godkendte {kode}. Kurven{'e' if flere else ''} hos {svar['butik']} er fyldt med {antal} varer."
     if svar.get("advarsler"):
+        # Fundet i en test: laksen kunne ikke leveres. Claude finder en anden ret (se ugeplan.py)
         besked += "\nObs:\n- " + "\n- ".join(svar["advarsler"])
-    besked += "\nVælg leveringstid og betal i appen."
+        besked += "\n" + (ERSTATNING_LYTTER if claude_lytter() else ERSTATNING_IKKE_LYTTER)
+    else:
+        besked += "\nVælg leveringstid og betal i appen."
     for anden in chats():
         await _svar(anden, besked)
     _gem_besked("handle-botten", besked)  # så Claude kan se, at kurven er fyldt
@@ -339,13 +342,21 @@ CLAUDE_LYTTER_SEK = 2 * 60  # Claude kalder værktøjer hvert minut, mens den ar
 IKKE_LYTTER = "Modtaget. Claude er ikke i gang lige nu. Skal det videre nu, så skriv fortsæt i Claude-chatten."
 
 
-def kvittering() -> str:
-    """Kort "Modtaget." når Claude er i gang. Ellers siges det, så ingen venter forgæves på et svar."""
+ERSTATNING_LYTTER = "Claude finder en erstatning og retter kurven. Vent med at betale."
+ERSTATNING_IKKE_LYTTER = "Skriv fortsæt i Claude-chatten, så finder Claude en erstatning. Vent med at betale."
+
+
+def claude_lytter() -> bool:
     try:
         siden = lokal.sekunder_siden_claude()
     except lokal.LokalFejl:
-        siden = None
-    return "Modtaget." if siden is not None and siden < CLAUDE_LYTTER_SEK else IKKE_LYTTER
+        return False
+    return siden is not None and siden < CLAUDE_LYTTER_SEK
+
+
+def kvittering() -> str:
+    """Kort "Modtaget." når Claude er i gang. Ellers siges det, så ingen venter forgæves på et svar."""
+    return "Modtaget." if claude_lytter() else IKKE_LYTTER
 
 
 async def haandter(opdatering: dict) -> str | None:
