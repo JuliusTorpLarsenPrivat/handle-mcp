@@ -26,6 +26,7 @@ TILLADTE_VAERTER = {
     "accounts.eu1.gigya.com",  # BilkaToGo: login (Salling Groups login-tjeneste)
     "api.bilkatogo.dk",  # BilkaToGo: kurv, leveringstider, ordrer
     "f9vbjlr1bk-dsn.algolia.net",  # BilkaToGo: produktsøgning
+    "api.telegram.org",  # jeres egen Telegram-bot: ugeplan og OK (telegram.py)
 }
 
 # Små bogstaver. Står et af ordene i stien, sendes kaldet aldrig.

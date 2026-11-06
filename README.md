@@ -12,8 +12,8 @@ Kræver [uv](https://docs.astral.sh/uv/) og [Git](https://git-scm.com/download/w
 
 ```powershell
 # 1. Gem login (spørger om email og kode, tjekker dem og gemmer i Windows Credential Manager)
-uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.11.0 handle-mcp login nemlig
-uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.11.0 handle-mcp login bilka
+uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.12.0 handle-mcp login nemlig
+uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.12.0 handle-mcp login bilka
 ```
 
 2. Claude Desktop → Settings → Developer → Edit Config:
@@ -23,7 +23,7 @@ uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.11.0 hand
   "mcpServers": {
     "handle": {
       "command": "C:\\Users\\JuliusTorpLarsen\\.local\\bin\\uvx.exe",
-      "args": ["--from", "git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.11.0", "handle-mcp"]
+      "args": ["--from", "git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.12.0", "handle-mcp"]
     }
   }
 }
@@ -49,6 +49,8 @@ uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.11.0 hand
 | `gem_opskrift` / `fjern_opskrift` | **ja, kun den lokale samling** | Gem eller fjern en ret |
 | `gem_madplan` / `vis_madplan` | **ja, kun den lokale plan** | Gemmer ugens madplan og præcise indkøbsliste med en kode (fx UGE-4821) og en SMS-tekst til godkendelse |
 | `fyld_kurv_fra_madplan` | **ja, kun kurven** | Lægger præcis den godkendte plans varer i kurven, når I har skrevet "OK UGE-4821". Én gang pr. plan |
+| `send_besked` | **ja, sender til jeres telefoner** | Sender ugeplanens spørgsmål og plan til jeres Telegram-bot |
+| `vis_beskeder` | nej | Jeres svar fra Telegram |
 | `koebsmoenster` | nej | Basisvarer (hvor tit og hvornår sidst), favoritter, øko-andel og forbrug pr. uge ud fra gemte kvitteringer |
 | `vis_profil` | nej | Antal personer, ugebudget, præferencer og ting at undgå |
 | `opdater_profil` | **ja, kun den lokale profil** | Ret profilen |
@@ -60,11 +62,19 @@ Beholdning, opskrifter, profil og kvitteringer ligger som JSON-filer i `%LOCALAP
 - Login ligger kun i styresystemets nøglering på din computer (eller i miljøvariabler).
 - Alle kald går gennem `vagt.py`, som kun tillader butikkernes egne adresser og afviser alt, der ligner bestilling, betaling eller valg af levering.
 - Navn, adresse, telefon og e-mail fjernes fra svarene, før Claude ser dem.
-- Lås altid installationen til en version (fx `@v0.11.0`), så koden ikke ændrer sig uden din viden.
+- Lås altid installationen til en version (fx `@v0.12.0`), så koden ikke ændrer sig uden din viden.
 
 ## Ugeplan
 
 Vælg prompten **Ugeplan** i Claude Desktop (eller skriv "lav ugeplan"). Claude spørger til køleskabet, laver madplan og indkøbsliste ud fra profil, købsmønster og priser, gemmer planen med en kode og giver en SMS-tekst. Når I svarer "OK <kode>", lægges præcis de varer i kurven. I vælger selv leveringstid og betaler i butikkens app.
+
+## Telegram (svar fra telefonen, gratis)
+
+1. Opret en bot: skriv `/newbot` til @BotFather i Telegram.
+2. `handle-mcp telegram-opsaet` gemmer botnøglen i nøgleringen og giver en parringskode.
+3. `handle-mcp telegram` starter lytteren (standard 24 timer). Send koden til botten fra begge telefoner.
+
+Nu sender ugeplanen sit spørgsmål og sin plan til jer, jeres svar læses af Claude, og "OK UGE-xxxx" fra en af jer fylder kurven med det samme. Kun tilkoblede telefoner kan skrive med botten. Tale virker med telefonens diktering eller Siri. Botten bestiller og betaler aldrig.
 
 ## Kvitteringer fra Coop
 

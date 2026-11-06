@@ -19,7 +19,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from handle_mcp import beholdning, data, genindlaes, historik, login, lokal, madplan, maengde, persondata, profil, samling, vagt
+from handle_mcp import beholdning, data, genindlaes, historik, login, lokal, madplan, maengde, persondata, profil, samling, telegram, vagt
 from handle_mcp import butikker as butik_modul
 from handle_mcp import sammenlign as sml
 
@@ -320,7 +320,9 @@ def ugeplan(aftener: int = 7, butik: str = "begge") -> str:
 1. Læs vis_profil, koebsmoenster (med andel_af_indkoeb fra profilens note), vis_beholdning
    og vis_opskrifter. Har garmin-værktøjerne, så tag dagsstatus og træninger de seneste 14 dage.
 2. Spørg kort, hvad vi har i køleskabet nu, og om der er noget særligt denne uge (gæster,
-   aftener ude, vildt fra Julius). Gem svaret med opdater_beholdning. Vent på svaret.
+   aftener ude, vildt fra Julius). Er Telegram sat op, så send spørgsmålet med send_besked og
+   bed brugeren sige til, når der er svar, og læs dem så med vis_beskeder. Ellers spørg her.
+   Gem svaret med opdater_beholdning. Vent på svaret.
 3. Foreslå {aftener} retter, der passer til profilen og det, vi plejer at købe. Brug hellere
    jeres egne opskrifter end opfundne. Brug det, vi har hjemme, først.
 4. Lav indkøbslisten med mængder ("500 g hakket oksekød"), uden det vi har hjemme. Tag
@@ -329,9 +331,32 @@ def ugeplan(aftener: int = 7, butik: str = "begge") -> str:
    ud fra pris, mængde og kvalitet. Brug tip om mængdetilbud, hvis det giver mening.
 6. Vælg butik og gem med gem_madplan (vare_id, navn, antal pakker og linjens pris for hver vare).
 7. Vis madplanen, de vigtigste valg med en kort begrundelse, samlet pris mod ugebudget og vores
-   normale forbrug, og til sidst sms_tekst i en kodeblok, så den kan sendes videre.
+   normale forbrug. Er Telegram sat op, så send sms_tekst med send_besked (lytteren på pc'en
+   fylder kurven, når en af os svarer "OK <kode>"). Ellers vis sms_tekst i en kodeblok.
 8. Stop her. Først når brugeren selv skriver "OK <kode>", må du kalde fyld_kurv_fra_madplan.
    Bestil og betal aldrig: vi vælger selv leveringstid og betaler i butikkens app."""
+
+
+@vaerktoej(SKRIVER)
+async def send_besked(tekst: str) -> Any:
+    """Send en besked til husstandens telefoner via jeres Telegram-bot (kun tilkoblede telefoner).
+    Brug den til ugeplanen: spørgsmålet om køleskabet, og planens sms_tekst til godkendelse.
+    Send ikke andet, og ikke flere gange end nødvendigt. Højst 4000 tegn."""
+    try:
+        n = await telegram.send_til_alle(tekst)
+    except telegram.TelegramFejl as fejl:
+        raise ToolError(str(fejl)) from None
+    return {"sendt_til": n}
+
+
+@vaerktoej(LOKAL_LAESER)
+async def vis_beskeder(kun_nye: bool = True) -> Any:
+    """Svar fra husstanden via Telegram (fx hvad der er i køleskabet), nyeste sidst. Markerer dem
+    som læst. "OK UGE-xxxx" står ikke her: dem klarer lytteren selv ved at fylde kurven."""
+    try:
+        return persondata.rens(telegram.beskeder(kun_nye))
+    except lokal.LokalFejl as fejl:
+        raise ToolError(str(fejl)) from None
 
 
 def _plan_svar(p: madplan.Madplan, **ekstra: Any) -> dict:
