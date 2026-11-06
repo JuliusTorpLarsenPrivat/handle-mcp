@@ -17,7 +17,7 @@ import secrets
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from decimal import Decimal
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 from zoneinfo import ZoneInfo
 
 from handle_mcp.lokal import LokalFejl, laes, skriv, tekst, tekster
@@ -30,11 +30,15 @@ PRISSTIGNING = Decimal("0.05")  # mere end 5 % dyrere i kurven end i planen = st
 STATUSSER = ("afventer", "kurv fyldt", "annulleret")
 
 
+BUTIKKER = ("nemlig", "bilka")
+
+
 class NyLinje(TypedDict):
     vare_id: str
     navn: str
     antal: int
     pris: float  # samlet pris for linjen i planen (med mængderabat)
+    butik: NotRequired[str]  # kun nødvendig, når planen deler indkøbet på begge butikker
 
 
 @dataclass
@@ -43,6 +47,7 @@ class Linje:
     navn: str
     antal: int
     pris: float
+    butik: str | None = None  # None: planens butik (ældre planer)
 
 
 @dataclass
@@ -65,6 +70,12 @@ class Madplan:
     def i_alt(self) -> float:
         return round(self.varer_i_alt + self.gebyrer, 2)
 
+    def linjer_pr_butik(self) -> dict[str, list[Linje]]:
+        ud: dict[str, list[Linje]] = {}
+        for ln in self.linjer:
+            ud.setdefault(ln.butik or self.butik, []).append(ln)
+        return ud
+
 
 def _nu() -> str:
     return datetime.now(TIDSZONE).isoformat(timespec="minutes")
@@ -83,9 +94,9 @@ def _gem_alle(planer: list[Madplan]) -> None:
 
 
 def gem(butik: str, retter: list[str], linjer: list[NyLinje], gebyrer: float = 0.0, note: str | None = None) -> Madplan:
-    butik = (tekst(butik, "butik") or "").lower()
-    if butik not in ("nemlig", "bilka"):
-        raise LokalFejl("Butikken skal være nemlig eller bilka.")
+    butik = (tekst(butik, "butik") or "").lower().replace(" + ", "+").replace("nemlig+bilka", "begge").replace("bilka+nemlig", "begge")
+    if butik not in (*BUTIKKER, "begge"):
+        raise LokalFejl("Butikken skal være nemlig, bilka eller begge.")
     if not linjer:
         raise LokalFejl("Planen har ingen varer.")
     if len(linjer) > MAKS_LINJER:
@@ -102,10 +113,17 @@ def gem(butik: str, retter: list[str], linjer: list[NyLinje], gebyrer: float = 0
             raise LokalFejl(f"Antal for {navn} skal være et heltal mellem 1 og {MAKS_ANTAL}.")
         if not isinstance(pris, (int, float)) or pris < 0:
             raise LokalFejl(f"Prisen for {navn} mangler eller er negativ.")
-        if vare_id in set_ids:
+        linjens_butik = (ln.get("butik") or "").lower() or (butik if butik != "begge" else "")
+        if linjens_butik not in BUTIKKER:
+            raise LokalFejl(f"Skriv butik (nemlig eller bilka) på {navn}, når planen bruger begge butikker.")
+        if butik != "begge" and linjens_butik != butik:
+            raise LokalFejl(f"{navn} er fra {linjens_butik}, men planen er kun for {butik}. Brug butik='begge'.")
+        if (linjens_butik, vare_id) in set_ids:
             raise LokalFejl(f"{navn} står to gange: læg antallene sammen i én linje.")
-        set_ids.add(vare_id)
-        rene.append(Linje(vare_id, navn, antal, round(float(pris), 2)))
+        set_ids.add((linjens_butik, vare_id))
+        rene.append(Linje(vare_id, navn, antal, round(float(pris), 2), linjens_butik))
+    if butik == "begge" and len({ln.butik for ln in rene}) == 1:
+        butik = rene[0].butik  # alle varer endte ét sted
     planer = _alle()
     brugte = {p.kode for p in planer}
     while (kode := f"UGE-{secrets.randbelow(9000) + 1000}") in brugte:
@@ -190,7 +208,8 @@ def er_godkendt(kode: str, svar: str) -> bool:
 
 def sms_tekst(p: Madplan) -> str:
     """Kort tekst til godkendelse, fx på SMS. Under 600 tegn, så den kan læses på en telefon."""
-    butik = {"nemlig": "nemlig.com", "bilka": "BilkaToGo"}[p.butik]
+    navne = {"nemlig": "nemlig.com", "bilka": "BilkaToGo"}
+    butik = " + ".join(navne[b] for b in p.linjer_pr_butik())
     retter = "\n".join(f"- {r}" for r in p.retter) or "- (ingen retter angivet)"
     return (
         f"Ugeplan {p.kode} ({butik})\n{retter}\n"

@@ -34,6 +34,7 @@ En gennemgang til dig, der vil forstå MCP, Python-projektet og GitHub, ikke kun
 | `src/handle_mcp/butikker/nemlig.py` | Taler med nemlig og oversætter svarene. |
 | `src/handle_mcp/butikker/bilka.py` | Det samme for BilkaToGo. |
 | `src/handle_mcp/data.py` | De fælles typer (Vare, Kurv, ...), som begge butikker oversættes til. |
+| `src/handle_mcp/fordeling.py` | Hvor er det samlet billigst: én butik eller begge, med gebyrer og minimumskøb. |
 | `src/handle_mcp/sammenlign.py` | Prissætter en indkøbsliste i begge butikker. |
 | `src/handle_mcp/persondata.py` | Fjerner navn, adresse osv., før Claude ser svaret. |
 | `src/handle_mcp/lokal.py` | Læser og skriver de små lokale JSON-filer (fælles for de tre nedenfor). |

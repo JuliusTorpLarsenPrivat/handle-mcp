@@ -74,7 +74,7 @@ def test_ugyldige_planer_afvises(linjer, fejl):
 
 
 def test_ukendt_butik():
-    with pytest.raises(LokalFejl, match="nemlig eller bilka"):
+    with pytest.raises(LokalFejl, match="nemlig, bilka eller begge"):
         madplan.gem("coop", [], LINJER)
 
 
@@ -163,7 +163,7 @@ async def test_vaerktoejerne_kan_ikke_bestille():
 async def test_prompten_ugeplan():
     prompts = {p.name: p for p in await server.mcp.list_prompts()}
     assert "ugeplan" in prompts
-    tekst = server.ugeplan(5, "nemlig")
+    tekst = server.ugeplan("5")
     assert "5 aftener" in tekst and "vent_paa_svar" in tekst and "hent_opskrift_fra_link" in tekst
     assert "bestil" in tekst and "Bestil og betal aldrig selv" in tekst
     # rækkefølgen: køleskab, menu, pris, bestil

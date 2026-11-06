@@ -39,6 +39,21 @@ def laes(navn: str) -> dict:
         raise LokalFejl(f"Kunne ikke læse {navn}: {fejl}") from None
 
 
+def _byt_ind(midlertidig: str, fil: Path, forsoeg: int = 6) -> None:
+    """os.replace, men tåler at Windows (fx Defender eller en anden proces, der læser filen)
+    låser den et øjeblik. Fundet i testene: en sjælden PermissionError."""
+    import time
+
+    for i in range(forsoeg):
+        try:
+            os.replace(midlertidig, fil)
+            return
+        except PermissionError:
+            if i == forsoeg - 1:
+                raise
+            time.sleep(0.05 * (i + 1))
+
+
 def skriv(navn: str, data: Any) -> None:
     """Skriv til en midlertidig fil og byt den ind, så filen aldrig står halvt skrevet."""
     fil = mappe() / f"{navn}.json"
@@ -48,7 +63,7 @@ def skriv(navn: str, data: Any) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(indhold)
-        os.replace(midlertidig, fil)
+        _byt_ind(midlertidig, fil)
     except BaseException:
         Path(midlertidig).unlink(missing_ok=True)
         raise

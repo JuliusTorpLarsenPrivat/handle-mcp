@@ -77,7 +77,7 @@ async def test_tip_i_sammenlign_liste(monkeypatch):
             return [Vare("b", "k", "Hel kylling", Decimal("79.95"), maengde="1 stk. / 1,35 kg", enhed="kg", tilbud="2 for 150 kr")]
 
     monkeypatch.setattr(server, "hent_butik", lambda _n: Butik())
-    (r,) = await server.sammenlign_liste(["2 stk hel kylling"], butikker=["b"])
+    (r,) = (await server.sammenlign_liste(["2 stk hel kylling"], butikker=["b"]))["butikker"]
     assert r["linjer"][0]["beloeb"] == 150 and r["linjer"][0]["tip"] is None
-    (r,) = await server.sammenlign_liste(["1 stk hel kylling"], butikker=["b"])
+    (r,) = (await server.sammenlign_liste(["1 stk hel kylling"], butikker=["b"]))["butikker"]
     assert r["linjer"][0]["tip"].startswith("Mængdetilbud: køb 2 for 150")

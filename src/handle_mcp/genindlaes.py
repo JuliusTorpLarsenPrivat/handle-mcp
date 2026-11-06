@@ -34,6 +34,7 @@ RAEKKEFOLGE = (
     "handle_mcp.butikker.nemlig",
     "handle_mcp.butikker.bilka",
     "handle_mcp.sammenlign",
+    "handle_mcp.fordeling",
     "handle_mcp.historik",
     "handle_mcp.beholdning",
     "handle_mcp.samling",

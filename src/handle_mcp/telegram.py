@@ -307,7 +307,8 @@ async def _godkendelse(chat_id: str, navn: str, tekst: str) -> bool:
         _gem_besked("handle-botten", f"{navn} prøvede at godkende {kode}, men kurven blev IKKE fyldt: {fejl}")
         return True
     antal = len(svar.get("lagt_i_kurven") or [])
-    besked = f"{navn} godkendte {kode}. Kurven hos {svar['butik']} er fyldt med {antal} varer."
+    flere = " + " in svar["butik"]
+    besked = f"{navn} godkendte {kode}. Kurven{'e' if flere else ''} hos {svar['butik']} er fyldt med {antal} varer."
     if svar.get("advarsler"):
         besked += "\nObs:\n- " + "\n- ".join(svar["advarsler"])
     besked += "\nVælg leveringstid og betal i appen."

@@ -19,7 +19,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from handle_mcp import beholdning, data, genindlaes, historik, login, lokal, madplan, maengde, opskrifter_web, persondata, profil, samling, telegram, vagt
+from handle_mcp import beholdning, data, fordeling, genindlaes, historik, login, lokal, madplan, maengde, opskrifter_web, persondata, profil, samling, telegram, vagt
 from handle_mcp import butikker as butik_modul
 from handle_mcp import sammenlign as sml
 
@@ -29,7 +29,9 @@ from handle_mcp import sammenlign as sml
 mcp = MCPServer(
     name="handle",
     instructions=(
-        "Dagligvarer fra nemlig.com og BilkaToGo. Du kan søge, se tilbud og opskrifter, "
+        "Dagligvarer fra nemlig.com og BilkaToGo. Beder brugeren om en ugeplan, madplan eller "
+        "ugens indkøb, så kald ugeplan_forloeb først og følg forløbet trin for trin. "
+        "Du kan søge, se tilbud og opskrifter, "
         "sammenligne priser og ændre antal i kurven. Du kan også huske, hvad brugerne har "
         "hjemme (beholdning), og tage højde for det i madplaner. Til madplaner: læs vis_profil "
         "(personer, ugebudget, præferencer, ting at undgå), vælg helst retter fra vis_opskrifter "
@@ -159,7 +161,9 @@ async def sammenlign_liste(
     Hver linje har op til 4 alternativer. Valget er kun et forslag ud fra pris og ord: GÅ
     ALTERNATIVERNE IGENNEM og vælg selv ud fra kvalitet (rå vare frem for færdigret, ikke
     ultraforarbejdet, rigtig vare frem for smagsvariant, profilens præferencer). Usikre linjer
-    skal altid tjekkes, evt. med en bedre søgetekst, før kurven fyldes."""
+    skal altid tjekkes, evt. med en bedre søgetekst, før kurven fyldes.
+    `anbefaling` siger, hvor det samlet er billigst med levering, pakning og minimumskøb: én
+    butik, eller begge, når det kan betale sig. Følg den, medmindre kvaliteten taler imod."""
     antal = antal or []
     liste = [(v, antal[i] if i < len(antal) else 1) for i, v in enumerate(varer)]
     try:
@@ -197,7 +201,7 @@ async def sammenlign_liste(
                 ],
             }
         )
-    return persondata.rens(data.til_json(ud))
+    return persondata.rens(data.til_json({"anbefaling": fordeling.find_billigste(resultater), "butikker": ud}))
 
 
 @vaerktoej(LAESER)
@@ -312,12 +316,13 @@ async def fjern_opskrift(navn: str) -> Any:
     return {"fjernet": navn}
 
 
-@mcp.prompt(title="Ugeplan", description="Ugens madplan: menu, rettelser, pris og 'bestil' via Telegram")
-def ugeplan(aftener: int = 7, butik: str = "begge") -> str:
-    """Hele ugeplanen, startet manuelt (indtil en maskine kan starte den automatisk)."""
-    return f"""Lav vores ugeplan for {aftener} aftener. Butik: {butik}. Følg trinene i rækkefølge.
-Er Telegram sat op, foregår al snak med husstanden der (send_besked og vent_paa_svar).
-Ellers foregår den her i chatten.
+def _ugeplan_tekst(aftener: str = "") -> str:
+    aftener = str(aftener or "").strip()
+    antal = f"{aftener} aftener" if aftener.isdigit() else "det antal aftener, husstanden svarer"
+    spoerg_antal = "" if aftener.isdigit() else " Spørg samtidig, hvor mange aftener vi skal have mad til."
+    return f"""Lav vores ugeplan for {antal}. Følg trinene i rækkefølge.
+Er Telegram sat op, foregår al snak med husstanden der (send_besked og vent_paa_svar), så de kan
+svare fra telefonen. Ellers foregår den her i chatten. Butikken vælger du selv: altid det billigste.
 
 FORBEREDELSE (stille, uden at spørge nogen)
 1. Læs vis_profil, koebsmoenster (andel_af_indkoeb fra profilens note), vis_beholdning og
@@ -325,16 +330,15 @@ FORBEREDELSE (stille, uden at spørge nogen)
 
 TRIN 1: KØLESKABET
 2. Spørg kort, hvad vi har i køleskabet, og om der er noget særligt denne uge (gæster,
-   aftener ude, vildt fra Julius). Vent på svaret med vent_paa_svar: kald den igen, til der er
-   svar, i op til 20 minutter. Gem svaret med opdater_beholdning.
+   aftener ude, vildt fra Julius).{spoerg_antal} Vent på svaret med vent_paa_svar: kald den igen,
+   til der er svar, i op til 20 minutter. Gem svaret med opdater_beholdning.
 
 TRIN 2: MENUEN (uden priser, men med et prisskøn)
-3. Find {aftener} retter fra vores opskriftssider (Valdemarsro, Arla, DR Mad, Madens Verden,
-   HelloFresh, Årstiderne). Søg på nettet og hent dem med hent_opskrift_fra_link, eller tag dem fra
+3. Find retterne på vores opskriftssider (Valdemarsro, Arla, DR Mad, Madens Verden, HelloFresh,
+   Årstiderne). Søg på nettet og hent dem med hent_opskrift_fra_link, eller tag dem fra
    vis_opskrifter. Brug det, vi har hjemme, først. Ram profilen og det, vi plejer at købe.
 4. Skøn prisen pr. ret ud fra hovedingredienserne og kendte priser (koebsmoenster, tidligere
-   søgninger). Hold menuen under ugebudgettet (vis_profil), og læg dig gerne tæt på vores normale
-   forbrug.
+   søgninger). Hold menuen under ugebudgettet (vis_profil), gerne tæt på vores normale forbrug.
 5. Send menuen kort: én linje pr. dag med ret, tid og skønnet pris, og til sidst det samlede skøn
    mod budgettet. Spørg: "Rettelser, eller er menuen god?" Vent på svaret.
 6. Ret menuen, til den er god. Gør det en rettelse meget dyrere, så sig det og foreslå et
@@ -342,18 +346,35 @@ TRIN 2: MENUEN (uden priser, men med et prisskøn)
 
 TRIN 3: PRISEN
 7. Lav indkøbslisten ud fra opskrifternes ingredienser med mængder til vores antal personer,
-   minus det vi har hjemme. Tag basisvarer med, der er snart_tom. Prissæt med sammenlign_liste
-   (oekologisk efter profilen). Vær grundig: gå alternativerne igennem, søg igen på usikre linjer,
-   og vælg ud fra pris, mængde og kvalitet.
-8. Er totalen over ugebudgettet, så find konkrete billigere udskiftninger og nævn dem.
-9. Vælg butik og gem med gem_madplan. Send: butik, total inkl. levering mod budget,
-   antal varer, de 3-5 vigtigste valg kort, evt. budgetadvarsel, og "Skriv bestil, eller ret noget".
+   minus det vi har hjemme. Tag basisvarer med, der er snart_tom. Prissæt i begge butikker med
+   sammenlign_liste (oekologisk efter profilen). Vær grundig: gå alternativerne igennem, søg igen
+   på usikre linjer, og vælg ud fra pris, mængde og kvalitet.
+8. Følg `anbefaling` fra sammenlign_liste: én butik, eller begge, når det samlet er billigst med
+   levering, pakning og minimumskøb. Del aldrig for en lille besparelse, som gebyrerne æder.
+   Er totalen over ugebudgettet, så find konkrete billigere udskiftninger og nævn dem.
+9. Gem med gem_madplan. Ved deling: butik="begge" og "butik" på hver vare. Send: butik(ker),
+   total inkl. levering mod budget, antal varer, de 3-5 vigtigste valg kort, evt. budgetadvarsel,
+   og "Skriv bestil, eller ret noget".
 
 TRIN 4: BESTIL
-10. Lytteren fylder kurven, når en af os svarer "bestil" (eller "ok"/"ja"), og sender besked.
-    Vent med vent_paa_svar og fortæl, hvad der skete. Kommer der rettelser i stedet, så ret,
-    gem en ny plan med gem_madplan (den gamle annulleres selv) og send den nye total.
+10. Lytteren fylder kurven/kurvene, når en af os svarer "bestil" (eller "ok"/"ja"), og sender
+    besked. Vent med vent_paa_svar og fortæl, hvad der skete. Kommer der rettelser i stedet, så
+    ret, gem en ny plan med gem_madplan (den gamle annulleres selv) og send den nye total.
 11. Bestil og betal aldrig selv: vi vælger leveringstid og betaler i butikkens app."""
+
+
+@mcp.prompt(title="Ugeplan", description="Ugens madplan: køleskab, menu, pris og 'bestil' via Telegram")
+def ugeplan(aftener: str = "") -> str:
+    """Hele ugeplanen. Lad `aftener` stå tom: så bliver husstanden spurgt."""
+    return _ugeplan_tekst(aftener)
+
+
+@vaerktoej(LOKAL_LAESER)
+async def ugeplan_forloeb() -> Any:
+    """KALD DENNE FØRST, når brugeren beder om en ugeplan, madplan eller ugens indkøb (fx "lav
+    ugeplan"). Giver det faste forløb trin for trin: køleskab, menu med prisskøn, pris i den
+    billigste butik eller fordeling, og "bestil". Følg det præcist."""
+    return {"forloeb": _ugeplan_tekst()}
 
 
 @vaerktoej(LOKAL_LAESER)
@@ -452,38 +473,52 @@ async def fyld_kurv_fra_madplan(kode: str, godkendelse: str, kurven_maa_have_and
         raise ToolError(f"Det er ikke en godkendelse af {p.kode}. Bed brugeren skrive \"OK {p.kode}\".")
     if p.status != "afventer":
         raise ToolError(f"Madplan {p.kode} er allerede brugt (status: {p.status}). Lav en ny plan.")
-    butik = _butik(p.butik)
+    pr_butik = p.linjer_pr_butik()
+    butikker = {navn: _butik(navn) for navn in pr_butik}
     try:
-        foer = await butik.kurv()
-        if foer.linjer and not kurven_maa_have_andet:
-            andet = ", ".join(f"{ln.antal} x {ln.navn}" for ln in foer.linjer[:8])
-            raise ToolError(
-                f"Kurven hos {p.butik} er ikke tom ({andet}). Spørg brugeren, om de varer skal blive, "
-                "og kald igen med kurven_maa_have_andet=True, eller bed dem tømme kurven."
-            )
-        resultater = await butik.saet_antal({ln.vare_id: ln.antal for ln in p.linjer})
-        efter = await butik.kurv()
+        # Tjek alle kurve FØR noget lægges i: enten fyldes alle, eller ingen
+        for navn, butik in butikker.items():
+            foer = await butik.kurv()
+            if foer.linjer and not kurven_maa_have_andet:
+                andet = ", ".join(f"{ln.antal} x {ln.navn}" for ln in foer.linjer[:8])
+                raise ToolError(
+                    f"Kurven hos {navn} er ikke tom ({andet}). Spørg brugeren, om de varer skal blive, "
+                    "og kald igen med kurven_maa_have_andet=True, eller bed dem tømme kurven."
+                )
+        pr_butik_svar = {}
+        for navn, butik in butikker.items():
+            linjer = pr_butik[navn]
+            resultater = await butik.saet_antal({ln.vare_id: ln.antal for ln in linjer})
+            efter = await butik.kurv()
+            pr_butik_svar[navn] = (linjer, resultater, efter)
     except (butik_modul.ButikFejl, vagt.VagtFejl, login.IntetLogin) as fejl:
         raise ToolError(str(fejl)) from None
-    plan_ids = {ln.vare_id for ln in p.linjer}
-    i_kurven = sum((ln.beloeb for ln in efter.linjer if ln.id in plan_ids), start=Decimal(0))
-    advarsler = [f"{r.id}: {r.besked or 'kunne ikke lægges i kurven'}" for r in resultater if not r.ok]
-    if float(i_kurven) > p.varer_i_alt * (1 + float(madplan.PRISSTIGNING)):
-        advarsler.append(
-            f"Varerne koster nu {float(i_kurven):.2f} kr i kurven mod {p.varer_i_alt:.2f} kr i planen. Vis brugeren forskellen."
-        )
+    advarsler, lagt_i, kurve, i_kurven_alt = [], [], {}, Decimal(0)
+    for navn, (linjer, resultater, efter) in pr_butik_svar.items():
+        plan_ids = {ln.vare_id for ln in linjer}
+        i_kurven = sum((ln.beloeb for ln in efter.linjer if ln.id in plan_ids), start=Decimal(0))
+        i_kurven_alt += i_kurven
+        plan_sum = round(sum(ln.pris for ln in linjer), 2)
+        advarsler += [f"{navn} {r.id}: {r.besked or 'kunne ikke lægges i kurven'}" for r in resultater if not r.ok]
+        if float(i_kurven) > plan_sum * (1 + float(madplan.PRISSTIGNING)):
+            advarsler.append(f"Varerne hos {navn} koster nu {float(i_kurven):.2f} kr mod {plan_sum:.2f} kr i planen. Vis brugeren forskellen.")
+        if efter.minimumskoeb and efter.varer_i_alt < efter.minimumskoeb:
+            advarsler.append(f"Kurven hos {navn} er under minimumskøbet på {float(efter.minimumskoeb):.0f} kr.")
+        lagt_i += [r for r in resultater if r.ok]
+        kurve[navn] = efter
     madplan.saet_status(p.kode, "kurv fyldt", f"kurv fyldt efter godkendelse: {godkendelse[:60]!r}")
     return persondata.rens(
         data.til_json(
             {
                 "kode": p.kode,
-                "butik": p.butik,
-                "lagt_i_kurven": [r for r in resultater if r.ok],
+                "butik": " + ".join(pr_butik),
+                "lagt_i_kurven": lagt_i,
                 "advarsler": advarsler,
                 "plan_varer_i_alt": p.varer_i_alt,
-                "kurv_varer_for_planen": i_kurven,
-                "kurv": efter,
-                "naeste_skridt": "Vælg leveringstid og betal selv i butikkens app eller på hjemmesiden.",
+                "kurv_varer_for_planen": i_kurven_alt,
+                "kurve": kurve,
+                "naeste_skridt": "Vælg leveringstid og betal selv i butikkens app eller på hjemmesiden"
+                + (" (i begge butikker)." if len(pr_butik) > 1 else "."),
             }
         )
     )

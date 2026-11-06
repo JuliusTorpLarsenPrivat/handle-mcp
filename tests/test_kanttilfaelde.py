@@ -86,7 +86,7 @@ async def test_tom_indkoebsliste(monkeypatch):
             return []
 
     monkeypatch.setattr(server, "hent_butik", lambda _n: Tom())
-    (r,) = await server.sammenlign_liste([], butikker=["tom"])
+    (r,) = (await server.sammenlign_liste([], butikker=["tom"]))["butikker"]
     assert r["linjer"] == [] and r["i_alt"] == 0 and r["fejl"] is None
 
 
