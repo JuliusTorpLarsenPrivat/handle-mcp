@@ -17,7 +17,7 @@ FOERSTE_SPOERGSMAAL = (
     "1) Hvad har I i køleskab, fryser og skab, der skal bruges?\n"
     "2) Hvor mange aftener skal vi have mad til, og fra hvilken dag?\n"
     "3) Noget særligt denne uge? (gæster, spise ude, vildt)\n"
-    "Svar bare her, gerne med tale."
+    "Svar bare her. Tal gerne ind med mikrofonen på tastaturet eller via Siri (ikke som talebesked)."
 )
 
 FAELLES = """
@@ -28,6 +28,13 @@ UGENS BUDGET (regn det ud, før du laver menuen)
   du regnede, og send ugens budget til gem_madplan som valg={"ugebudget_kr": …}.
 - Sig altid tydeligt, hvad du sammenligner med: "ugens budget" (ovenstående) eller "normalt
   forbrug" (det vi plejer at bruge ifølge koebsmoenster). De to tal er ikke det samme.
+
+SVARENE ER OFTE INDTALT
+- Diktering giver fejl og ingen tegnsætning (fx "en halv tær" kan være en halv tærte eller en
+  halv tærtedej). Gæt det mest sandsynlige ud fra sammenhængen, og skriv gættet i menubeskeden
+  i stedet for at stille et ekstra spørgsmål.
+- Mangler startdagen, så regn med dagen efter den første mulige levering, og skriv det i
+  menubeskeden. Spørg kun, hvis svaret er helt uklart.
 
 TRIN 2: MENUEN (uden priser, men med et prisskøn)
 3. Find retterne på vores opskriftssider (Valdemarsro, Arla, DR Mad, Madens Verden, HelloFresh,
