@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import getpass
+import re
 
 from handle_mcp import login
 from handle_mcp.butikker import hent_butik
@@ -24,12 +25,32 @@ from handle_mcp.butikker import hent_butik
 HJAELP = __doc__
 
 
-async def _telegram_opsaet() -> int:
+def _udklipsholder() -> str:
+    """Teksten i Windows' udklipsholder (uden at vise den)."""
+    import subprocess
+
+    svar = subprocess.run(["powershell", "-NoProfile", "-Command", "Get-Clipboard"], capture_output=True, text=True, encoding="utf-8")
+    return svar.stdout or ""
+
+
+async def _telegram_opsaet(fra_udklipsholder: bool = False) -> int:
     from handle_mcp import telegram
 
-    print("1. Åbn Telegram, skriv til @BotFather, send /newbot og følg trinene.")
-    print("2. Indsæt den botnøgle, du får (den vises ikke, mens du skriver).")
-    token = getpass.getpass("Botnøgle: ").strip()
+    if fra_udklipsholder:
+        raa = _udklipsholder()
+    else:
+        print("1. Åbn Telegram, skriv til @BotFather, send /newbot og følg trinene.")
+        print("2. Indsæt den botnøgle, du får (den vises ikke, mens du skriver), og tryk Enter.")
+        print("   Driller det? Kopiér nøglen og kør i stedet: handle-mcp telegram-opsaet udklipsholder")
+        raa = getpass.getpass("Botnøgle: ")
+    # Find selve nøglen, så ekstra tegn fra indsættelsen ikke ødelægger den
+    fund = re.findall(r"\d{5,15}:[A-Za-z0-9_-]{30,50}", raa)
+    if len(fund) != 1:
+        hvad = "ingen nøgle" if not fund else f"{len(fund)} nøgler"
+        print(f"Det, der blev indsat ({len(raa.strip())} tegn), indeholder {hvad}. Intet er gemt. Prøv igen.")
+        return 1
+    token = fund[0]
+    print(f"Modtog nøgle til bot nr. {token.split(':')[0]} ({len(token)} tegn). Tjekker den hos Telegram …")
     try:
         navn = await telegram.bot_navn(token)
         telegram.gem_token(token)
@@ -101,6 +122,8 @@ def kommando(args: list[str]) -> int:
             return 0
         case ["telegram-opsaet"]:
             return asyncio.run(_telegram_opsaet())
+        case ["telegram-opsaet", "udklipsholder"]:
+            return asyncio.run(_telegram_opsaet(fra_udklipsholder=True))
         case ["telegram-par"]:
             from handle_mcp import telegram
 
