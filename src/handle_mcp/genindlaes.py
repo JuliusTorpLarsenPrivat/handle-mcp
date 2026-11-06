@@ -41,6 +41,7 @@ RAEKKEFOLGE = (
     "handle_mcp.profil",
     "handle_mcp.madplan",
     "handle_mcp.telegram",
+    "handle_mcp.ugeplan",
 )
 MAPPE = Path(__file__).parent
 SERVER_FIL = MAPPE / "server.py"

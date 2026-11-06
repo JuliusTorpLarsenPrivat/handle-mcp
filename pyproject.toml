@@ -1,6 +1,6 @@
 [project]
 name = "handle-mcp"
-version = "0.14.2"
+version = "0.15.0"
 description = "MCP-server til nemlig.com og BilkaToGo: søg, sammenlign og fyld kurven. Du betaler altid selv."
 readme = "README.md"
 license = "MIT"

@@ -22,6 +22,7 @@ from mcp.types import ToolAnnotations
 from handle_mcp import beholdning, data, fordeling, genindlaes, historik, login, lokal, madplan, maengde, opskrifter_web, persondata, profil, samling, telegram, vagt
 from handle_mcp import butikker as butik_modul
 from handle_mcp import sammenlign as sml
+from handle_mcp import ugeplan as ugeplan_modul
 
 # Modulerne slås op ved hvert kald (sml.rangeret, butik_modul.ButikFejl …) i stedet for at blive
 # importeret som navne. Så kan genindlaes.py skifte koden ud, mens serveren kører.
@@ -29,8 +30,9 @@ from handle_mcp import sammenlign as sml
 mcp = MCPServer(
     name="handle",
     instructions=(
-        "Dagligvarer fra nemlig.com og BilkaToGo. Beder brugeren om en ugeplan, madplan eller "
-        "ugens indkøb, så kald ugeplan_forloeb først og følg forløbet trin for trin. "
+        "Dagligvarer fra nemlig.com og BilkaToGo. Beder brugeren om en madplan eller ugens "
+        "indkøb af mad, så kald ugeplan_forloeb først og følg forløbet trin for trin. Er Telegram "
+        "sat op, foregår al snak med husstanden der, ikke i chatten. "
         "Du kan søge, se tilbud og opskrifter, "
         "sammenligne priser og ændre antal i kurven. Du kan også huske, hvad brugerne har "
         "hjemme (beholdning), og tage højde for det i madplaner. Til madplaner: læs vis_profil "
@@ -317,65 +319,23 @@ async def fjern_opskrift(navn: str) -> Any:
 
 
 def _ugeplan_tekst(aftener: str = "") -> str:
-    aftener = str(aftener or "").strip()
-    antal = f"{aftener} aftener" if aftener.isdigit() else "det antal aftener, husstanden svarer"
-    spoerg_antal = "" if aftener.isdigit() else " Spørg samtidig, hvor mange aftener vi skal have mad til."
-    return f"""Lav vores ugeplan for {antal}. Følg trinene i rækkefølge.
-Er Telegram sat op, foregår al snak med husstanden der (send_besked og vent_paa_svar), så de kan
-svare fra telefonen. Ellers foregår den her i chatten. Butikken vælger du selv: altid det billigste.
-
-FORBEREDELSE (stille, uden at spørge nogen)
-1. Læs vis_profil, koebsmoenster (andel_af_indkoeb fra profilens note), vis_beholdning og
-   vis_opskrifter. Har du garmin-værktøjerne, så tag dagsstatus og træninger 14 dage tilbage.
-
-TRIN 1: KØLESKABET
-2. Spørg kort, hvad vi har i køleskabet, og om der er noget særligt denne uge (gæster,
-   aftener ude, vildt fra Julius).{spoerg_antal} Vent på svaret med vent_paa_svar: kald den igen,
-   til der er svar, i op til 20 minutter. Gem svaret med opdater_beholdning.
-
-TRIN 2: MENUEN (uden priser, men med et prisskøn)
-3. Find retterne på vores opskriftssider (Valdemarsro, Arla, DR Mad, Madens Verden, HelloFresh,
-   Årstiderne). Søg på nettet og hent dem med hent_opskrift_fra_link, eller tag dem fra
-   vis_opskrifter. Brug det, vi har hjemme, først. Ram profilen og det, vi plejer at købe.
-4. Skøn prisen pr. ret ud fra hovedingredienserne og kendte priser (koebsmoenster, tidligere
-   søgninger). Hold menuen under ugebudgettet (vis_profil), gerne tæt på vores normale forbrug.
-5. Send menuen kort: én linje pr. dag med ret, tid og skønnet pris, og til sidst det samlede skøn
-   mod budgettet. Spørg: "Rettelser, eller er menuen god?" Vent på svaret.
-6. Ret menuen, til den er god. Gør det en rettelse meget dyrere, så sig det og foreslå et
-   alternativ. Først når menuen er godkendt, går du videre.
-
-TRIN 3: PRISEN
-7. Lav indkøbslisten ud fra opskrifternes ingredienser med mængder til vores antal personer,
-   minus det vi har hjemme. Tag basisvarer med, der er snart_tom. Prissæt i begge butikker med
-   sammenlign_liste (oekologisk efter profilen). Vær grundig: gå alternativerne igennem, søg igen
-   på usikre linjer, og vælg ud fra pris, mængde og kvalitet.
-8. Følg `anbefaling` fra sammenlign_liste: én butik, eller begge, når det samlet er billigst med
-   levering, pakning og minimumskøb. Del aldrig for en lille besparelse, som gebyrerne æder.
-   Er totalen over ugebudgettet, så find konkrete billigere udskiftninger og nævn dem.
-9. Gem med gem_madplan. Ved deling: butik="begge" og "butik" på hver vare. Send: butik(ker),
-   total inkl. levering mod budget, antal varer, de 3-5 vigtigste valg kort, evt. budgetadvarsel,
-   og "Skriv bestil, eller ret noget".
-
-TRIN 4: BESTIL
-10. Lytteren fylder kurven/kurvene, når en af os svarer "bestil" (eller "ok"/"ja"), og sender
-    besked. Vent med vent_paa_svar og fortæl, hvad der skete. Kommer der rettelser i stedet, så
-    ret, gem en ny plan med gem_madplan (den gamle annulleres selv) og send den nye total.
-11. Bestil og betal aldrig selv: vi vælger leveringstid og betaler i butikkens app."""
+    return ugeplan_modul.tekst_chat(aftener)
 
 
 @mcp.prompt(title="Ugeplan", description="Ugens madplan: køleskab, menu, pris og 'bestil' via Telegram")
 def ugeplan() -> str:
-    """Hele ugeplanen. Ingen felter: antal aftener spørges husstanden om på Telegram
+    """Hele madplanen. Ingen felter: antal aftener spørges husstanden om på Telegram
     (Claude Desktop viser en boks for hvert felt, også valgfrie)."""
-    return _ugeplan_tekst()
+    return "Kald værktøjet ugeplan_forloeb og følg det forløb, det giver, trin for trin."
 
 
-@vaerktoej(LOKAL_LAESER)
+@vaerktoej(SKRIVER)
 async def ugeplan_forloeb() -> Any:
-    """KALD DENNE FØRST, når brugeren beder om en ugeplan, madplan eller ugens indkøb (fx "lav
-    ugeplan"). Giver det faste forløb trin for trin: køleskab, menu med prisskøn, pris i den
+    """KALD DENNE FØRST, når brugeren beder om en madplan eller ugens indkøb af mad (fx "lav
+    madplan"). Er Telegram sat op, sender den selv det første spørgsmål til husstanden på
+    Telegram. Giver det faste forløb trin for trin: køleskab, menu med prisskøn, pris i den
     billigste butik eller fordeling, og "bestil". Følg det præcist."""
-    return {"forloeb": _ugeplan_tekst()}
+    return await ugeplan_modul.start()
 
 
 @vaerktoej(LOKAL_LAESER)

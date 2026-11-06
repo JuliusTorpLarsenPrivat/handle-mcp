@@ -163,8 +163,10 @@ async def test_vaerktoejerne_kan_ikke_bestille():
 async def test_prompten_ugeplan():
     prompts = {p.name: p for p in await server.mcp.list_prompts()}
     assert "ugeplan" in prompts
-    tekst = server._ugeplan_tekst("5")
-    assert "5 aftener" in tekst and "vent_paa_svar" in tekst and "hent_opskrift_fra_link" in tekst
+    from handle_mcp import ugeplan
+
+    tekst = ugeplan.tekst_telegram(2)
+    assert "vent_paa_svar" in tekst and "hent_opskrift_fra_link" in tekst
     assert "bestil" in tekst and "Bestil og betal aldrig selv" in tekst
     # rækkefølgen: køleskab, menu, pris, bestil
     assert tekst.index("KØLESKABET") < tekst.index("MENUEN") < tekst.index("PRISEN") < tekst.index("BESTIL")
