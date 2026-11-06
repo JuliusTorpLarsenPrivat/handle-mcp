@@ -9,7 +9,7 @@ Teksten ligger her (ikke i server.py), så den kan rettes uden at genstarte Clau
 
 from __future__ import annotations
 
-from handle_mcp import persondata, telegram
+from handle_mcp import beholdning, persondata, telegram
 from handle_mcp.lokal import LokalFejl
 
 FOERSTE_SPOERGSMAAL = (
@@ -21,6 +21,23 @@ FOERSTE_SPOERGSMAAL = (
 )
 
 FAELLES = """
+SVARET OM KØLESKABET ER SANDHEDEN (fundet i test 3: en tærterest fra en anden uge kom med)
+- Det, de nævner i køleskabet, ERSTATTER køleskabsdelen af beholdningen: fjern med
+  opdater_beholdning(fjern=[…]) de køleskabsvarer og rester, de ikke nævner. Fryser og skab
+  bevares, medmindre de siger andet. Brug kun rester, de har nævnt i DETTE svar.
+
+ANTAL AFTENER (fundet i test 3: kødsovsen blev talt som en ekstra aften)
+- "6 aftener" = 6 aftensmåltider i alt, MEDREGNET retter af det, vi har hjemme (fx kødsovs),
+  og gæsteaftenen. Læg aldrig en aften til for resterne. Er det uklart, hvilken dag der
+  udgår, så vælg selv og skriv det i menubeskeden.
+
+ØKOLOGI (Julius: mere vægt på økologi)
+- Kød, fisk, mejeri, æg, grønt og basisvarer: vælg øko, når det findes, også når det koster
+  mere. Konventionelt kun når der ingen øko-udgave er, og så skriv det kort i prisbeskeden.
+- Kød er ALTID øko eller vores eget vildt. Findes der ingen øko-udgave af kødet til en ret
+  (fx hakket grise/kalv), så brug en anden øko-protein eller en anden ret (se NÅR EN RET IKKE
+  KAN KØBES ORDENTLIGT). Vælg aldrig konventionelt kød.
+
 UGENS BUDGET (regn det ud, før du laver menuen)
 - Profilens ugebudget_kr er for en hel uge (7 dage) til profilens antal personer.
 - Færre dage: skalér ned (6 af 7 dage → budget × 6/7). Gæster: skalér op efter antal ekstra
@@ -187,6 +204,10 @@ def _beskeder_siden_sidst() -> list[dict]:
 
 async def start() -> dict:
     """Start madplanen: send det første spørgsmål på Telegram, hvis det er sat op."""
+    try:
+        beholdning.ryd_gammelt_koeleskab()  # gamle rester må ikke komme med i menuen
+    except LokalFejl:
+        pass
     if telegram_klar():
         tidligere = _beskeder_siden_sidst()
         try:

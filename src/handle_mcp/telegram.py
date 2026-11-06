@@ -302,12 +302,31 @@ async def _svar(chat_id: str, tekst: str) -> None:
         log.warning("Kunne ikke svare: %s", fejl)
 
 
+BESTIL_VENTER = "bestil-venter"  # læses af madplan.gem_fra_vaerktoej, når den rettede plan gemmes
+BESTIL_EFTER_RETTELSE = "Modtaget. Claude retter planen efter jeres besked og lægger den så i kurven."
+
+
+def _rettelse_efter(oprettet: str) -> bool:
+    """Har husstanden skrevet noget efter planen, som Claude ikke har læst endnu?"""
+    return any(
+        not b.get("laest") and b.get("fra") not in (SENDT_AF, "handle-botten") and b.get("tid", "") >= oprettet
+        for b in laes("beskeder").get("beskeder", [])
+    )
+
+
 async def _godkendelse(chat_id: str, navn: str, tekst: str) -> bool:
     """Er beskeden et OK til en ventende plan? Så fyld kurven og svar. Ellers False."""
     koder = {f"UGE-{k}" for k in madplan.KODE_I_TEKST.findall(tekst.upper())}
     if len(koder) == 1:
         kode = next(iter(koder))
     elif not koder and madplan.er_kort_ja(tekst) and (ventende := madplan.eneste_ventende()):
+        if _rettelse_efter(ventende.oprettet):
+            # Fundet i test 3: "Jeg køber selv kødet" og straks "Bestil". Bestil gælder planen MED
+            # rettelsen, som Claude ikke har lavet endnu, så den gamle plan må ikke fyldes i kurven.
+            skriv(BESTIL_VENTER, {"tid": datetime.now(TIDSZONE).timestamp(), "navn": navn, "kode": ventende.kode, "i_alt": float(ventende.i_alt)})
+            _gem_besked(navn, tekst)
+            await _svar(chat_id, BESTIL_EFTER_RETTELSE if claude_lytter() else IKKE_LYTTER)
+            return True
         kode = ventende.kode  # "bestil" gælder den eneste plan, der venter
     else:
         return False

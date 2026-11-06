@@ -247,4 +247,28 @@ def gem_fra_vaerktoej(
     p = gem(butik, retter, linjer, gebyrer, note)
     budget = budget or profil.hent().ugebudget_kr
     advarsel = f"Planen koster {p.i_alt:.0f} kr, over ugens budget på {budget:.0f} kr." if budget and p.i_alt > budget else None
-    return svar(p, advarsel=advarsel, ugens_budget=budget)
+    return svar(p, advarsel=advarsel, ugens_budget=budget, **_bestil_der_venter(p, budget))
+
+
+BESTIL_GYLDIG_SEK = 30 * 60
+
+
+def _bestil_der_venter(p: Madplan, budget: float | None) -> dict:
+    """Skrev husstanden "bestil" lige efter en rettelse (se telegram._godkendelse), gælder det
+    den rettede plan, når den ikke er blevet dyrere (højst 5 %) og holder budgettet."""
+    import time
+
+    v = laes("bestil-venter")
+    if not v or v.get("kode") == p.kode or time.time() - float(v.get("tid") or 0) > BESTIL_GYLDIG_SEK:
+        return {}
+    skriv("bestil-venter", {})
+    gammel = float(v.get("i_alt") or 0)
+    if p.i_alt <= gammel * 1.05 and not (budget and p.i_alt > budget):
+        return {
+            "bestil_venter": f'{v.get("navn")} skrev "bestil" efter sin rettelse, og planen er ikke blevet dyrere. '
+            f'Kald fyld_kurv_fra_madplan("{p.kode}", "bestil") nu, og send så kurvens total og leveringsforslag.'
+        }
+    return {
+        "bestil_venter": f'{v.get("navn")} skrev "bestil" efter sin rettelse, men den rettede plan er dyrere '
+        f"({p.i_alt:.0f} kr mod {gammel:.0f} kr) eller over budget. Send den nye total og bed om et nyt bestil."
+    }

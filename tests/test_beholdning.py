@@ -63,3 +63,17 @@ async def test_vaerktoejerne_i_serveren():
     svar = await server.opdater_beholdning(tilfoej=[{"navn": "hakkede tomater", "maengde": "3 dåser"}])
     assert svar["beholdning"][0]["navn"] == "hakkede tomater" and svar["ikke_fundet"] == []
     assert (await server.vis_beholdning())[0]["maengde"] == "3 dåser"
+
+
+def test_gamle_rester_i_koeleskabet_ryddes(monkeypatch):
+    """Fundet i test 3: en tærterest fra en anden uge kom med i menuen."""
+    from handle_mcp import beholdning
+    from handle_mcp.lokal import skriv
+
+    skriv("beholdning", {"varer": [
+        {"navn": "rester af tærte", "maengde": "1/2", "sted": "køleskab", "noteret": "2026-10-01T18:00+01:00"},
+        {"navn": "grågås", "maengde": "1", "sted": "fryser", "noteret": "2026-10-01T18:00+01:00"},
+        {"navn": "smør", "maengde": "1", "sted": "køleskab", "noteret": "2099-01-01T18:00+01:00"},
+    ]})
+    assert beholdning.ryd_gammelt_koeleskab() == ["rester af tærte"]
+    assert {v.navn for v in beholdning.hent()} == {"grågås", "smør"}  # fryseren holder

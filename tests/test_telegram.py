@@ -426,3 +426,44 @@ async def test_vare_der_ikke_kom_i_kurven_giver_besked_om_erstatning(tg, monkeyp
     assert "HD Odense" in sidste and "betal i appen" not in sidste and "Vent med at betale" in sidste
     assert (telegram.ERSTATNING_LYTTER in sidste) is claude_i_gang
     assert (telegram.ERSTATNING_IKKE_LYTTER in sidste) is not claude_i_gang
+
+
+async def test_bestil_lige_efter_en_rettelse_fylder_ikke_den_gamle_plan(tg, monkeypatch):
+    """Fundet i test 3: "Jeg køber selv kødet" + "Bestil". Den gamle plan (med kødet) må ikke
+    fyldes; bestil gælder den rettede plan, når Claude gemmer den, hvis den ikke er dyrere."""
+    import time
+
+    butik = FalskButik()
+    monkeypatch.setattr(server, "hent_butik", lambda _n: butik)
+    par(tg, 1)
+    await telegram.hent_og_haandter(0)
+    linjer = [{"vare_id": "kod", "navn": "Hakket kød", "antal": 1, "pris": 60.0}, {"vare_id": "kart", "navn": "Kartofler", "antal": 1, "pris": 15.0}]
+    gammel = await server.gem_madplan("nemlig", ["Ons: Frikadeller"], linjer)
+    skriv("claude-aktiv", {"sidst": time.time()})
+    tg.besked(1, "Jeg handler selv øko kød til frikadeller i Brugsen")
+    tg.besked(1, "Bestil")
+    await telegram.hent_og_haandter(0)
+    assert butik.kald == []  # intet i kurven endnu
+    assert tg.sendt[-1] == (1, telegram.BESTIL_EFTER_RETTELSE)
+    assert [b["tekst"] for b in await server.vis_beskeder()][-1] == "Bestil"  # Claude ser det
+    ny = await server.gem_madplan("nemlig", ["Ons: Frikadeller (eget kød)"], linjer[1:])
+    assert ny["kode"] != gammel["kode"] and f'fyld_kurv_fra_madplan("{ny["kode"]}", "bestil")' in ny["bestil_venter"]
+    svar = await server.fyld_kurv_fra_madplan(ny["kode"], "bestil")
+    assert butik.kald == [{"kart": 1}] and svar["lagt_i_kurven"]
+    # og det gælder kun én gang
+    assert "bestil_venter" not in await server.gem_madplan("nemlig", ["x"], linjer[1:])
+
+
+async def test_bestil_efter_rettelse_men_dyrere_plan_kraever_nyt_bestil(tg, monkeypatch):
+    import time
+
+    monkeypatch.setattr(server, "hent_butik", lambda _n: FalskButik())
+    par(tg, 1)
+    await telegram.hent_og_haandter(0)
+    await server.gem_madplan("nemlig", ["Ons"], [{"vare_id": "a", "navn": "a", "antal": 1, "pris": 50.0}])
+    skriv("claude-aktiv", {"sidst": time.time()})
+    tg.besked(1, "Tilføj laks")
+    tg.besked(1, "bestil")
+    await telegram.hent_og_haandter(0)
+    ny = await server.gem_madplan("nemlig", ["Ons"], [{"vare_id": "a", "navn": "a", "antal": 1, "pris": 50.0}, {"vare_id": "l", "navn": "laks", "antal": 1, "pris": 90.0}])
+    assert "bed om et nyt bestil" in ny["bestil_venter"]

@@ -106,3 +106,10 @@ async def test_forloebet_fra_anden_test(tg):
     f = (await server.ugeplan_forloeb())["forloeb"]
     assert "HELE ugen frem til næste levering (7 dage)" in f
     assert "præcis som vi sagde" in f
+
+
+async def test_forloebet_fra_tredje_test(tg):
+    kobl_paa(1)
+    f = (await server.ugeplan_forloeb())["forloeb"]
+    assert "ERSTATTER køleskabsdelen" in f and "MEDREGNET retter af det, vi har hjemme" in f
+    assert "Kød er ALTID øko eller vores eget vildt" in f

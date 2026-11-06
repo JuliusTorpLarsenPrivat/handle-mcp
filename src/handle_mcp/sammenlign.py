@@ -36,7 +36,7 @@ SOEGEDYBDE = 50  # hits pr. vare og butik. 10 var for lidt: de billigste lå tit
 TILBUDSDYBDE = 200  # tilbud pr. butik (nemlig: pr. tilbudsliste), hentet én gang pr. sammenligning
 ALTERNATIVER = 4  # så Claude kan se efter og ikke bare tager første bedste
 SENE_GEBYRER = {"nemlig": {"poser": Decimal("17.85")}}  # står ikke på en tom kurv
-OEKO_TILLAEG = 1.5  # med oeko=True må en økovare koste op til 50 % mere og stadig vinde
+OEKO_TILLAEG = 2.0  # med oeko=True må en økovare koste op til dobbelt så meget og stadig vinde (Julius: mere vægt på øko)
 # Endelser der bare er bøjning af samme ord (efter æ→ae osv.): tomat/tomater, æble/æbler, løg/løgene.
 BOEJNINGER = {"", "e", "r", "er", "n", "en", "et", "ne", "ene", "erne", "s", "es"}
 # Endelser der kun siger noget om udskæring/form, så varen stadig er den samme: kyllingebrystfilet.

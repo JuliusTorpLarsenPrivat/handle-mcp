@@ -59,3 +59,20 @@ def opdater(
     resultat = sorted(varer.values(), key=lambda v: ((v.sted or "~").lower(), v.navn.lower()))
     skriv("beholdning", {"varer": [asdict(v) for v in resultat]})
     return resultat, ukendte
+
+
+FRISK_DAGE = 7  # rester og friske varer i køleskabet holder ikke længere
+
+
+def ryd_gammelt_koeleskab(dage: int = FRISK_DAGE) -> list[str]:
+    """Fjern køleskabsvarer, der er noteret for mere end `dage` siden. Fundet i test 3: en
+    tærterest fra en tidligere uge blev ved med at stå i beholdningen og kom med i menuen."""
+    graense = datetime.now(TIDSZONE).timestamp() - dage * 86400
+    gamle = [
+        v.navn
+        for v in hent()
+        if (v.sted or "").lower().startswith("køl") and v.noteret and datetime.fromisoformat(v.noteret).timestamp() < graense
+    ]
+    if gamle:
+        opdater(fjern=gamle)
+    return gamle

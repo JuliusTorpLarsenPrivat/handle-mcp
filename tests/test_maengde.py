@@ -74,12 +74,12 @@ def test_to_smaa_pakker_kan_vaere_billigst():
 def test_oeko_maa_koste_lidt_mere():
     alm = kylling("alm", 40, "500 g", "80")
     oeko = kylling("oeko", 55, "500 g", "110", "Kyllingebrystfilet øko.")
-    for_dyr = kylling("dyr", 70, "500 g", "140", "Kyllingebrystfilet økologisk")
+    for_dyr = kylling("dyr", 85, "500 g", "170", "Kyllingebrystfilet økologisk")
     assert er_oeko(oeko) and er_oeko(for_dyr) and not er_oeko(alm)
     (valgt, *_), _ = bedste("kyllingebryst", [alm, oeko], Maengde(500, "g"), oeko=True)
-    assert valgt.id == "oeko"  # 55 kr < 40 kr x 1,5
+    assert valgt.id == "oeko"  # 55 kr < 40 kr x 2 (Julius: mere vægt på øko)
     (valgt, *_), _ = bedste("kyllingebryst", [alm, for_dyr], Maengde(500, "g"), oeko=True)
-    assert valgt.id == "alm"  # 70 kr > 40 kr x 1,5
+    assert valgt.id == "alm"  # 85 kr > 40 kr x 2
     (valgt, *_), _ = bedste("kyllingebryst", [alm, oeko], Maengde(500, "g"))
     assert valgt.id == "alm"  # uden øko-ønske vinder prisen
 
