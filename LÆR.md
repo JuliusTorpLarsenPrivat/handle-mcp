@@ -28,6 +28,7 @@ En gennemgang til dig, der vil forstå MCP, Python-projektet og GitHub, ikke kun
 | Fil | Hvad den gør |
 |---|---|
 | `src/handle_mcp/server.py` | Værktøjerne. Hver `@mcp.tool` er en "knap" for Claude. Start her. |
+| `src/handle_mcp/genindlaes.py` | Indlæser ændret kode før hvert kald, så Claude Desktop ikke skal genstartes for rettelser. |
 | `src/handle_mcp/vagt.py` | Al netværkstrafik går herigennem. Kun kendte adresser, ingen betaling. |
 | `src/handle_mcp/login.py` | Henter/gemmer login i nøgleringen. |
 | `src/handle_mcp/butikker/nemlig.py` | Taler med nemlig og oversætter svarene. |

@@ -12,8 +12,8 @@ Kræver [uv](https://docs.astral.sh/uv/) og [Git](https://git-scm.com/download/w
 
 ```powershell
 # 1. Gem login (spørger om email og kode, tjekker dem og gemmer i Windows Credential Manager)
-uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.10.0 handle-mcp login nemlig
-uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.10.0 handle-mcp login bilka
+uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.11.0 handle-mcp login nemlig
+uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.11.0 handle-mcp login bilka
 ```
 
 2. Claude Desktop → Settings → Developer → Edit Config:
@@ -23,7 +23,7 @@ uvx --from git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.10.0 hand
   "mcpServers": {
     "handle": {
       "command": "C:\\Users\\JuliusTorpLarsen\\.local\\bin\\uvx.exe",
-      "args": ["--from", "git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.10.0", "handle-mcp"]
+      "args": ["--from", "git+https://github.com/JuliusTorpLarsenPrivat/handle-mcp@v0.11.0", "handle-mcp"]
     }
   }
 }
@@ -60,7 +60,7 @@ Beholdning, opskrifter, profil og kvitteringer ligger som JSON-filer i `%LOCALAP
 - Login ligger kun i styresystemets nøglering på din computer (eller i miljøvariabler).
 - Alle kald går gennem `vagt.py`, som kun tillader butikkernes egne adresser og afviser alt, der ligner bestilling, betaling eller valg af levering.
 - Navn, adresse, telefon og e-mail fjernes fra svarene, før Claude ser dem.
-- Lås altid installationen til en version (fx `@v0.10.0`), så koden ikke ændrer sig uden din viden.
+- Lås altid installationen til en version (fx `@v0.11.0`), så koden ikke ændrer sig uden din viden.
 
 ## Ugeplan
 
@@ -89,6 +89,9 @@ handle-mcp http 100.x.y.z 8765       # fx maskinens Tailscale-adresse
 Stil den aldrig åbent på internettet. Brug et privat netværk som [Tailscale](https://tailscale.com).
 
 ## Udvikling
+
+Ændringer i logikken (varevalg, mængder, tilbud, kvitteringer …) bruges med det samme: før hvert værktøjskald tjekker serveren, om kodefilerne er ændret, og indlæser dem igen (`genindlaes.py`). Nye værktøjer, nye felter og ændringer i `server.py` kræver stadig, at Claude Desktop genstartes.
+
 
 ```sh
 uv sync

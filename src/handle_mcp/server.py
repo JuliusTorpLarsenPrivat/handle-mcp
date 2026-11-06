@@ -9,6 +9,7 @@ andet skrives til stdout: log går til stderr.
 
 from __future__ import annotations
 
+import functools
 import logging
 import sys
 from decimal import Decimal
@@ -18,14 +19,12 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from handle_mcp import beholdning, historik, login, madplan, profil, samling
-from handle_mcp.butikker import ButikFejl, hent_butik
-from handle_mcp.data import til_json
-from handle_mcp.lokal import LokalFejl
-from handle_mcp.persondata import rens
-from handle_mcp.maengde import behov
-from handle_mcp.sammenlign import antal_pakker, er_oeko, hent_tilbud, kandidater, pris_for_behov, rangeret, sammenlign, tilbud_tip
-from handle_mcp.vagt import VagtFejl
+from handle_mcp import beholdning, data, genindlaes, historik, login, lokal, madplan, maengde, persondata, profil, samling, vagt
+from handle_mcp import butikker as butik_modul
+from handle_mcp import sammenlign as sml
+
+# Modulerne slås op ved hvert kald (sml.rangeret, butik_modul.ButikFejl …) i stedet for at blive
+# importeret som navne. Så kan genindlaes.py skifte koden ud, mens serveren kører.
 
 mcp = MCPServer(
     name="handle",
@@ -52,23 +51,50 @@ LOKAL_SKRIVER = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempo
 ALLE = ["nemlig", "bilka"]
 
 
+def _ny_kode() -> None:
+    """Indlæs ændret kode før kaldet (se genindlaes.py). En fejl i ny kode vises for Claude,
+    og den gamle kode bruges ikke halvt: intet er skiftet ud, før alle filer er tjekket."""
+    try:
+        genindlaes.tjek()
+    except Exception as fejl:  # noqa: BLE001  fx en tastefejl i en fil, der lige er gemt
+        raise ToolError(f"Ny kode i handle-mcp kunne ikke indlæses, så intet er ændret: {type(fejl).__name__}: {fejl}") from None
+
+
+def vaerktoej(annotations: ToolAnnotations):
+    """Som @mcp.tool, men tjekker for ny kode før hvert kald."""
+
+    def pynt(funktion):
+        @functools.wraps(funktion)
+        async def med_ny_kode(*args, **kwargs):
+            _ny_kode()
+            return await funktion(*args, **kwargs)
+
+        return mcp.tool(annotations=annotations)(med_ny_kode)
+
+    return pynt
+
+
+def hent_butik(navn: str):
+    return butik_modul.hent_butik(navn)
+
+
 def _butik(navn: str):
     """Butikken, eller en forståelig fejl til Claude ved et ukendt navn (fx "coop")."""
     try:
         return hent_butik(navn)
-    except ButikFejl as fejl:
+    except butik_modul.ButikFejl as fejl:
         raise ToolError(str(fejl)) from None
 
 
 async def _koer(kald) -> Any:
     """Kør et butikskald, rens persondata og gør fejl forståelige for Claude."""
     try:
-        return rens(til_json(await kald))
-    except (ButikFejl, VagtFejl, login.IntetLogin) as fejl:
+        return persondata.rens(data.til_json(await kald))
+    except (butik_modul.ButikFejl, vagt.VagtFejl, login.IntetLogin) as fejl:
         raise ToolError(str(fejl)) from None
 
 
-@mcp.tool(annotations=LAESER)
+@vaerktoej(LAESER)
 async def soeg_varer(
     tekst: str, butik: str = "nemlig", antal: int = 10, billigst_foerst: bool = False, oekologisk: bool = False
 ) -> Any:
@@ -84,23 +110,23 @@ async def soeg_varer(
 
     async def billigst() -> list:
         b = _butik(butik)
-        rent, behov_ = behov(tekst)
-        varer = await kandidater(b, rent, await hent_tilbud(b))
+        rent, behov_ = maengde.behov(tekst)
+        varer = await sml.kandidater(b, rent, await sml.hent_tilbud(b))
         return [
             {
                 "vare": v,
-                "pakker": antal_pakker(v, behov_),
-                "pris_for_behov": pris_for_behov(v, behov_),
-                "oeko": er_oeko(v),
-                "tip": tilbud_tip(v, antal_pakker(v, behov_) or 1),
+                "pakker": sml.antal_pakker(v, behov_),
+                "pris_for_behov": sml.pris_for_behov(v, behov_),
+                "oeko": sml.er_oeko(v),
+                "tip": sml.tilbud_tip(v, sml.antal_pakker(v, behov_) or 1),
             }
-            for _, v in rangeret(rent, varer, behov_, oekologisk)[:antal]
+            for _, v in sml.rangeret(rent, varer, behov_, oekologisk)[:antal]
         ]
 
     return await _koer(billigst())
 
 
-@mcp.tool(annotations=LAESER)
+@vaerktoej(LAESER)
 async def ugens_tilbud(butik: str = "nemlig", antal: int = 25) -> Any:
     """Ugens tilbud i én butik. nemlig: Skarp pris, Priskup, Dagstilbud og Undgå madspild."""
     antal = max(1, min(antal, 50))
@@ -108,20 +134,20 @@ async def ugens_tilbud(butik: str = "nemlig", antal: int = 25) -> Any:
     return (await _koer(_butik(butik).tilbud(antal)))[:antal]
 
 
-@mcp.tool(annotations=LAESER)
+@vaerktoej(LAESER)
 async def soeg_opskrifter(tekst: str, antal: int = 5) -> Any:
     """Søg i nemligs opskrifter. Giver navn og link. Brug hent_opskrift for varer og pris."""
     return await _koer(hent_butik("nemlig").soeg_opskrifter(tekst, min(antal, 20)))
 
 
-@mcp.tool(annotations=LAESER)
+@vaerktoej(LAESER)
 async def hent_opskrift(opskrift: str, personer: int | None = None) -> Any:
     """Varerne til en nemlig-opskrift (link eller id) for et antal personer, med pris.
     Varer markeret har_hjemme (salt, olie osv.) er ikke med i prisen."""
     return await _koer(hent_butik("nemlig").opskrift(opskrift, personer))
 
 
-@mcp.tool(annotations=LAESER)
+@vaerktoej(LAESER)
 async def sammenlign_liste(
     varer: list[str], antal: list[int] | None = None, butikker: list[str] | None = None, oekologisk: bool = False
 ) -> Any:
@@ -137,8 +163,8 @@ async def sammenlign_liste(
     antal = antal or []
     liste = [(v, antal[i] if i < len(antal) else 1) for i, v in enumerate(varer)]
     try:
-        resultater = await sammenlign([hent_butik(b) for b in butikker or ALLE], liste, oekologisk)
-    except ButikFejl as fejl:
+        resultater = await sml.sammenlign([hent_butik(b) for b in butikker or ALLE], liste, oekologisk)
+    except butik_modul.ButikFejl as fejl:
         raise ToolError(str(fejl)) from None
     ud = []
     for r in resultater:
@@ -164,23 +190,23 @@ async def sammenlign_liste(
                         "tip": ln.tip,
                         "sikker": ln.sikker,
                         "alternativer": [
-                            {"vare": a, "pakker": antal_pakker(a, ln.behov) or 1, "oeko": er_oeko(a)} for a in ln.alternativer
+                            {"vare": a, "pakker": sml.antal_pakker(a, ln.behov) or 1, "oeko": sml.er_oeko(a)} for a in ln.alternativer
                         ],
                     }
                     for ln in r.linjer
                 ],
             }
         )
-    return rens(til_json(ud))
+    return persondata.rens(data.til_json(ud))
 
 
-@mcp.tool(annotations=LAESER)
+@vaerktoej(LAESER)
 async def vis_kurv(butik: str = "nemlig") -> Any:
     """Kurvens linjer, gebyrer, total, minimumskøb og valgt leveringstid."""
     return await _koer(_butik(butik).kurv())
 
 
-@mcp.tool(annotations=SKRIVER)
+@vaerktoej(SKRIVER)
 async def saet_antal_i_kurv(butik: str, antal: dict[str, int]) -> Any:
     """Sæt antal af varer i kurven: {"varenummer": antal}. Antallet er det samlede antal
     (ikke et tillæg), og 0 fjerner varen. Ændrer KUN kurven. Spørg brugeren først."""
@@ -189,18 +215,18 @@ async def saet_antal_i_kurv(butik: str, antal: dict[str, int]) -> Any:
     return await _koer(_butik(butik).saet_antal(antal))
 
 
-@mcp.tool(annotations=LOKAL_LAESER)
+@vaerktoej(LOKAL_LAESER)
 async def vis_beholdning() -> Any:
     """Det I har hjemme (køleskab, fryser, skab), som I sidst har fortalt det.
     `noteret` er hvornår hver vare sidst blev opdateret: gamle varer kan være brugt eller for gamle.
     Brug den til madplaner og indkøbslister, så I ikke køber det, I allerede har."""
     try:
-        return til_json(beholdning.hent())
-    except LokalFejl as fejl:
+        return data.til_json(beholdning.hent())
+    except lokal.LokalFejl as fejl:
         raise ToolError(str(fejl)) from None
 
 
-@mcp.tool(annotations=LOKAL_SKRIVER)
+@vaerktoej(LOKAL_SKRIVER)
 async def opdater_beholdning(
     tilfoej: list[beholdning.NyVare] | None = None, fjern: list[str] | None = None, erstat_alt: bool = False
 ) -> Any:
@@ -211,20 +237,20 @@ async def opdater_beholdning(
     Spørg, hvis det er uklart om noget er brugt op, og vis bagefter den nye beholdning."""
     try:
         varer, ukendte = beholdning.opdater(tilfoej, fjern, erstat_alt)
-    except LokalFejl as fejl:
+    except lokal.LokalFejl as fejl:
         raise ToolError(str(fejl)) from None
-    return til_json({"beholdning": varer, "ikke_fundet": ukendte})
+    return data.til_json({"beholdning": varer, "ikke_fundet": ukendte})
 
 
 def _lokalt(kald, *args, **kwargs) -> Any:
     """Kør noget mod de lokale filer og gør fejl forståelige for Claude."""
     try:
-        return til_json(kald(*args, **kwargs))
-    except LokalFejl as fejl:
+        return data.til_json(kald(*args, **kwargs))
+    except lokal.LokalFejl as fejl:
         raise ToolError(str(fejl)) from None
 
 
-@mcp.tool(annotations=LOKAL_LAESER)
+@vaerktoej(LOKAL_LAESER)
 async def koebsmoenster(andel_af_indkoeb: float = 1.0) -> Any:
     """Hvad husstanden faktisk køber, ud fra gemte kvitteringer (i dag fra Coop/Brugsen):
     basisvarer med typisk interval og dage siden sidst (`snart_tom`), favoritter pr. madkategori,
@@ -235,14 +261,14 @@ async def koebsmoenster(andel_af_indkoeb: float = 1.0) -> Any:
     return _lokalt(historik.moenster, andel_af_indkoeb)
 
 
-@mcp.tool(annotations=LOKAL_LAESER)
+@vaerktoej(LOKAL_LAESER)
 async def vis_profil() -> Any:
     """Husstandens profil: antal personer, ugebudget (kr., inkl. levering), præferencer og ting
     at undgå (allergier, det I ikke kan lide). Læs den, før du laver madplan eller indkøbsliste."""
     return _lokalt(profil.hent)
 
 
-@mcp.tool(annotations=LOKAL_SKRIVER)
+@vaerktoej(LOKAL_SKRIVER)
 async def opdater_profil(
     personer: int | None = None,
     ugebudget_kr: float | None = None,
@@ -255,7 +281,7 @@ async def opdater_profil(
     return _lokalt(profil.opdater, personer, ugebudget_kr, praeferencer, undgaa, note)
 
 
-@mcp.tool(annotations=LOKAL_LAESER)
+@vaerktoej(LOKAL_LAESER)
 async def vis_opskrifter(tag: str | None = None, soeg: str | None = None) -> Any:
     """Jeres egen opskriftssamling: retter I kender og stoler på. Vælg retter herfra til
     madplaner, før du foreslår nye. `tag` fx "hverdag" eller "vegetar", `soeg` et ord i navn,
@@ -263,7 +289,7 @@ async def vis_opskrifter(tag: str | None = None, soeg: str | None = None) -> Any
     return _lokalt(samling.hent, tag, soeg)
 
 
-@mcp.tool(annotations=LOKAL_SKRIVER)
+@vaerktoej(LOKAL_SKRIVER)
 async def gem_opskrift(
     navn: str,
     link: str | None = None,
@@ -278,7 +304,7 @@ async def gem_opskrift(
     return _lokalt(samling.gem, navn, link, ingredienser, personer, tags, note)
 
 
-@mcp.tool(annotations=LOKAL_SKRIVER)
+@vaerktoej(LOKAL_SKRIVER)
 async def fjern_opskrift(navn: str) -> Any:
     """Fjern en ret fra opskriftssamlingen. Spørg brugeren først."""
     if not _lokalt(samling.fjern, navn):
@@ -309,11 +335,11 @@ def ugeplan(aftener: int = 7, butik: str = "begge") -> str:
 
 
 def _plan_svar(p: madplan.Madplan, **ekstra: Any) -> dict:
-    d = til_json(p)
+    d = data.til_json(p)
     return {**d, "varer_i_alt": p.varer_i_alt, "i_alt": p.i_alt, "sms_tekst": madplan.sms_tekst(p), **ekstra}
 
 
-@mcp.tool(annotations=LOKAL_SKRIVER)
+@vaerktoej(LOKAL_SKRIVER)
 async def gem_madplan(
     butik: str, retter: list[str], linjer: list[madplan.NyLinje], gebyrer: float = 0.0, note: str | None = None
 ) -> Any:
@@ -327,22 +353,22 @@ async def gem_madplan(
     try:
         p = madplan.gem(butik, retter, linjer, gebyrer, note)
         budget = profil.hent().ugebudget_kr
-    except LokalFejl as fejl:
+    except lokal.LokalFejl as fejl:
         raise ToolError(str(fejl)) from None
     advarsel = f"Planen koster {p.i_alt:.0f} kr, over ugebudgettet på {budget:.0f} kr." if budget and p.i_alt > budget else None
     return _plan_svar(p, advarsel=advarsel)
 
 
-@mcp.tool(annotations=LOKAL_LAESER)
+@vaerktoej(LOKAL_LAESER)
 async def vis_madplan(kode: str | None = None) -> Any:
     """En gemt madplan med varer, pris, status og sms_tekst. Uden kode: den nyeste."""
     try:
         return _plan_svar(madplan.hent(kode))
-    except LokalFejl as fejl:
+    except lokal.LokalFejl as fejl:
         raise ToolError(str(fejl)) from None
 
 
-@mcp.tool(annotations=SKRIVER)
+@vaerktoej(SKRIVER)
 async def fyld_kurv_fra_madplan(kode: str, godkendelse: str, kurven_maa_have_andet: bool = False) -> Any:
     """Læg PRÆCIS varerne fra en godkendt madplan i butikkens kurv. Ændrer kun kurven.
     Brug det KUN, når brugeren selv har skrevet sin godkendelse med koden, fx "OK UGE-4821".
@@ -352,7 +378,7 @@ async def fyld_kurv_fra_madplan(kode: str, godkendelse: str, kurven_maa_have_and
     vælger selv leveringstid og betaler i butikkens app. Vis bagefter kurven og evt. advarsler."""
     try:
         p = madplan.hent(kode)
-    except LokalFejl as fejl:
+    except lokal.LokalFejl as fejl:
         raise ToolError(str(fejl)) from None
     if not madplan.er_godkendt(p.kode, godkendelse):
         raise ToolError(f"Det er ikke en godkendelse af {p.kode}. Bed brugeren skrive \"OK {p.kode}\".")
@@ -369,7 +395,7 @@ async def fyld_kurv_fra_madplan(kode: str, godkendelse: str, kurven_maa_have_and
             )
         resultater = await butik.saet_antal({ln.vare_id: ln.antal for ln in p.linjer})
         efter = await butik.kurv()
-    except (ButikFejl, VagtFejl, login.IntetLogin) as fejl:
+    except (butik_modul.ButikFejl, vagt.VagtFejl, login.IntetLogin) as fejl:
         raise ToolError(str(fejl)) from None
     plan_ids = {ln.vare_id for ln in p.linjer}
     i_kurven = sum((ln.beloeb for ln in efter.linjer if ln.id in plan_ids), start=Decimal(0))
@@ -379,8 +405,8 @@ async def fyld_kurv_fra_madplan(kode: str, godkendelse: str, kurven_maa_have_and
             f"Varerne koster nu {float(i_kurven):.2f} kr i kurven mod {p.varer_i_alt:.2f} kr i planen. Vis brugeren forskellen."
         )
     madplan.saet_status(p.kode, "kurv fyldt", f"kurv fyldt efter godkendelse: {godkendelse[:60]!r}")
-    return rens(
-        til_json(
+    return persondata.rens(
+        data.til_json(
             {
                 "kode": p.kode,
                 "butik": p.butik,
@@ -395,13 +421,13 @@ async def fyld_kurv_fra_madplan(kode: str, godkendelse: str, kurven_maa_have_and
     )
 
 
-@mcp.tool(annotations=LAESER)
+@vaerktoej(LAESER)
 async def leveringstider(butik: str = "nemlig", dage: int = 5) -> Any:
     """Ledige leveringstider med pris. Kun til orientering: brugeren vælger selv tiden."""
     return await _koer(_butik(butik).leveringstider(min(dage, 14)))
 
 
-@mcp.tool(annotations=LAESER)
+@vaerktoej(LAESER)
 async def tidligere_ordrer(butik: str = "nemlig", antal: int = 10, ordre_id: str | None = None) -> Any:
     """Tidligere ordrer. Med ordre_id: varerne i den ordre (godt til 'det vi plejer at købe')."""
     b = _butik(butik)
@@ -411,6 +437,7 @@ async def tidligere_ordrer(butik: str = "nemlig", antal: int = 10, ordre_id: str
 def main() -> None:
     logging.basicConfig(stream=sys.stderr, level=logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)  # httpx logger ellers hele URL'er
+    genindlaes.start()
     if len(sys.argv) > 1:
         from handle_mcp.cli import kommando
 
