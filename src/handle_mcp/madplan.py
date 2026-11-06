@@ -120,6 +120,11 @@ def gem(butik: str, retter: list[str], linjer: list[NyLinje], gebyrer: float = 0
         note=tekst(note, "note", 500),
         historik=[f"{_nu()} oprettet"],
     )
+    # En ny plan erstatter de ventende: så gælder "bestil" altid den seneste version
+    for gammel in planer:
+        if gammel.status == "afventer":
+            gammel.status = "annulleret"
+            gammel.historik.append(f"{_nu()} erstattet af {kode}")
     _gem_alle(planer + [plan])
     return plan
 
@@ -151,15 +156,36 @@ def saet_status(kode: str, status: str, besked: str) -> Madplan:
 
 
 KODE_I_TEKST = re.compile(r"UGE[\s-]*(\d{4})\b")
-JA_ORD = re.compile(r"\b(OK|OKAY|JA|GODKEND|GODKENDT|GODKENDER)\b")
+JA_ORD = re.compile(r"\b(OK|OKAY|JA|GODKEND|GODKENDT|GODKENDER|BESTIL|KØB)\b")
+# Et kort svar må KUN bestå af disse ord: "bestil", "ja tak", "ok bestil det bare".
+# "Ja, men uden laks" er ikke en godkendelse, for "men", "uden" og "laks" er ikke med.
+KORT_JA = {"ok", "okay", "ja", "jep", "yes", "godkend", "godkendt", "godkender", "bestil", "bestilt",
+           "køb", "kør", "go", "det", "den", "dem", "tak", "bare", "gerne", "lortet", "så", "skidtet", "planen"}  # fmt: skip
+JA_KERNE = {"ok", "okay", "ja", "jep", "yes", "godkend", "godkendt", "godkender", "bestil", "køb", "kør", "go"}
+MAKS_ALDER_TIMER = 48
+
+
+def er_kort_ja(svar: str) -> bool:
+    ord_ = re.findall(r"[a-zæøå]+", svar.lower())
+    return bool(ord_) and len(ord_) <= 6 and set(ord_) <= KORT_JA and bool(set(ord_) & JA_KERNE)
+
+
+def eneste_ventende() -> Madplan | None:
+    """Den ene plan, der venter på godkendelse (højst 48 timer gammel), ellers None."""
+    graense = datetime.now(TIDSZONE).timestamp() - MAKS_ALDER_TIMER * 3600
+    ventende = [p for p in _alle() if p.status == "afventer" and datetime.fromisoformat(p.oprettet).timestamp() >= graense]
+    return ventende[0] if len(ventende) == 1 else None
 
 
 def er_godkendt(kode: str, svar: str) -> bool:
-    """Har brugeren godkendt netop denne plan? Svaret skal både sige ja (OK, ja, godkend) og
-    nævne planens kode: "OK UGE-4821", "ok uge 4821", "Ja, godkend UGE4821"."""
+    """Har brugeren godkendt netop denne plan? Enten med koden ("OK UGE-4821") eller med et
+    kort ja ("bestil", "ja tak"), når netop denne plan er den eneste, der venter."""
     s = svar.upper()
     koder = {f"UGE-{m}" for m in KODE_I_TEKST.findall(s)}
-    return bool(JA_ORD.search(s)) and koder == {kode}
+    if koder:
+        return bool(JA_ORD.search(s)) and koder == {kode}
+    ventende = eneste_ventende()
+    return er_kort_ja(svar) and ventende is not None and ventende.kode == kode
 
 
 def sms_tekst(p: Madplan) -> str:
@@ -169,5 +195,5 @@ def sms_tekst(p: Madplan) -> str:
     return (
         f"Ugeplan {p.kode} ({butik})\n{retter}\n"
         f"{len(p.linjer)} {'vare' if len(p.linjer) == 1 else 'varer'}, i alt {p.i_alt:.0f} kr inkl. levering.\n"
-        f"Svar \"OK {p.kode}\" for at lægge varerne i kurven."
+        f"Svar \"bestil\" for at lægge varerne i kurven (betal selv i appen bagefter)."
     )

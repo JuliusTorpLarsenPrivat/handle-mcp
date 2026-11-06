@@ -114,7 +114,7 @@ async def test_hele_forloebet(butik):
 
 async def test_uden_godkendelse_sker_intet(butik):
     kode = (await server.gem_madplan("nemlig", ["Man: Laks"], LINJER))["kode"]
-    for svar in ("lav planen om", kode, "OK", "OK UGE-0000"):
+    for svar in ("lav planen om", kode, "ja, men uden laks", "OK UGE-0000", "hvad koster det?"):
         with pytest.raises(ToolError, match="ikke en godkendelse"):
             await server.fyld_kurv_fra_madplan(kode, svar)
     assert butik.kald == []
@@ -164,4 +164,58 @@ async def test_prompten_ugeplan():
     prompts = {p.name: p for p in await server.mcp.list_prompts()}
     assert "ugeplan" in prompts
     tekst = server.ugeplan(5, "nemlig")
-    assert "5 aftener" in tekst and "fyld_kurv_fra_madplan" in tekst and "Bestil og betal aldrig" in tekst
+    assert "5 aftener" in tekst and "vent_paa_svar" in tekst and "hent_opskrift_fra_link" in tekst
+    assert "bestil" in tekst and "Bestil og betal aldrig selv" in tekst
+    # rækkefølgen: køleskab, menu, pris, bestil
+    assert tekst.index("KØLESKABET") < tekst.index("MENUEN") < tekst.index("PRISEN") < tekst.index("BESTIL")
+
+
+# --- ny plan erstatter gammel, og et kort "bestil" ---------------------------------
+
+
+def test_ny_plan_annullerer_den_ventende():
+    a = madplan.gem("nemlig", ["Man: Laks"], LINJER)
+    b = madplan.gem("nemlig", ["Man: Torsk"], LINJER)
+    assert madplan.hent(a.kode).status == "annulleret" and "erstattet af " + b.kode in madplan.hent(a.kode).historik[-1]
+    assert madplan.eneste_ventende().kode == b.kode
+
+
+@pytest.mark.parametrize(
+    "svar, ok",
+    [
+        ("bestil", True),
+        ("Bestil det bare", True),
+        ("ja tak", True),
+        ("OK!", True),
+        ("køb lortet", True),
+        ("ja, men uden laks", False),
+        ("bestil, men drop vinen", False),
+        ("ok jeg kigger på det", False),
+        ("tak", False),  # intet ja-ord
+        ("hvad koster det", False),
+    ],
+)
+def test_kort_ja(svar, ok):
+    assert madplan.er_kort_ja(svar) is ok
+
+
+def test_kort_ja_gaelder_kun_den_ventende_plan():
+    gammel = madplan.gem("nemlig", ["Man"], LINJER)
+    ny = madplan.gem("nemlig", ["Man"], LINJER)
+    assert madplan.er_godkendt(ny.kode, "bestil")
+    assert not madplan.er_godkendt(gammel.kode, "bestil")  # annulleret
+    assert madplan.er_godkendt(ny.kode, f"OK {ny.kode}")
+
+
+def test_kort_ja_virker_ikke_for_gamle_planer(monkeypatch):
+    p = madplan.gem("nemlig", ["Man"], LINJER)
+    monkeypatch.setattr(madplan, "MAKS_ALDER_TIMER", -1)  # som om den er mere end 48 timer gammel
+    assert not madplan.er_godkendt(p.kode, "bestil")
+    assert madplan.er_godkendt(p.kode, f"OK {p.kode}")  # med koden går det stadig
+
+
+async def test_bestil_fylder_kurven(butik):
+    gemt = await server.gem_madplan("nemlig", ["Man: Laks"], LINJER)
+    assert "bestil" in gemt["sms_tekst"]
+    await server.fyld_kurv_fra_madplan(gemt["kode"], "bestil")
+    assert butik.kald == [{"111": 1, "222": 2}]

@@ -150,6 +150,22 @@ def _gem_besked(fra: str, tekst: str) -> None:
     skriv("beskeder", {"beskeder": alle[-MAKS_BESKEDER:]})
 
 
+def antal_ulaeste() -> int:
+    return sum(1 for b in laes("beskeder").get("beskeder", []) if not b.get("laest"))
+
+
+async def vent_paa_svar(sekunder: float = 50) -> list[dict]:
+    """Vent på nye svar (højst `sekunder`). Lytteren henter dem fra Telegram i baggrunden."""
+    import asyncio
+
+    slut = asyncio.get_running_loop().time() + max(1.0, min(sekunder, 55))
+    while asyncio.get_running_loop().time() < slut:
+        if antal_ulaeste():
+            return beskeder(kun_nye=True)
+        await asyncio.sleep(2)
+    return []
+
+
 def beskeder(kun_nye: bool = True, marker_laest: bool = True) -> list[dict]:
     d = laes("beskeder")
     alle = d.get("beskeder", [])
@@ -272,17 +288,23 @@ async def _svar(chat_id: str, tekst: str) -> None:
 async def _godkendelse(chat_id: str, navn: str, tekst: str) -> bool:
     """Er beskeden et OK til en ventende plan? Så fyld kurven og svar. Ellers False."""
     koder = {f"UGE-{k}" for k in madplan.KODE_I_TEKST.findall(tekst.upper())}
-    if len(koder) != 1 or not madplan.er_godkendt(next(iter(koder)), tekst):
+    if len(koder) == 1:
+        kode = next(iter(koder))
+    elif not koder and madplan.er_kort_ja(tekst) and (ventende := madplan.eneste_ventende()):
+        kode = ventende.kode  # "bestil" gælder den eneste plan, der venter
+    else:
+        return False
+    if not madplan.er_godkendt(kode, tekst):
         return False
     from mcp.server.mcpserver.exceptions import ToolError
 
     from handle_mcp import server  # først her: serveren importerer selv dette modul
 
-    kode = next(iter(koder))
     try:
         svar = await server.fyld_kurv_fra_madplan(kode, tekst)
     except ToolError as fejl:
         await _svar(chat_id, f"Kurven blev IKKE fyldt: {fejl}")
+        _gem_besked("handle-botten", f"{navn} prøvede at godkende {kode}, men kurven blev IKKE fyldt: {fejl}")
         return True
     antal = len(svar.get("lagt_i_kurven") or [])
     besked = f"{navn} godkendte {kode}. Kurven hos {svar['butik']} er fyldt med {antal} varer."
@@ -291,6 +313,7 @@ async def _godkendelse(chat_id: str, navn: str, tekst: str) -> bool:
     besked += "\nVælg leveringstid og betal i appen."
     for anden in chats():
         await _svar(anden, besked)
+    _gem_besked("handle-botten", besked)  # så Claude kan se, at kurven er fyldt
     return True
 
 

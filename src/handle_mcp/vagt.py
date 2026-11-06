@@ -27,7 +27,11 @@ TILLADTE_VAERTER = {
     "api.bilkatogo.dk",  # BilkaToGo: kurv, leveringstider, ordrer
     "f9vbjlr1bk-dsn.algolia.net",  # BilkaToGo: produktsøgning
     "api.telegram.org",  # jeres egen Telegram-bot: ugeplan og OK (telegram.py)
-}
+    # opskriftssider, I stoler på (opskrifter_web.py). Kun læsning af offentlige opskrifter.
+    "www.valdemarsro.dk", "valdemarsro.dk", "www.arla.dk", "arla.dk", "www.dr.dk", "dr.dk",
+    "madensverden.dk", "www.madensverden.dk", "www.hellofresh.dk", "hellofresh.dk",
+    "www.aarstiderne.com", "aarstiderne.com",
+}  # fmt: skip
 
 # Små bogstaver. Står et af ordene i stien, sendes kaldet aldrig.
 FORBUDTE_ORD = (

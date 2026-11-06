@@ -29,6 +29,7 @@ RAEKKEFOLGE = (
     "handle_mcp.vagt",
     "handle_mcp.login",
     "handle_mcp.maengde",
+    "handle_mcp.opskrifter_web",
     "handle_mcp.butikker",
     "handle_mcp.butikker.nemlig",
     "handle_mcp.butikker.bilka",

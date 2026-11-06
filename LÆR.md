@@ -40,6 +40,7 @@ En gennemgang til dig, der vil forstå MCP, Python-projektet og GitHub, ikke kun
 | `src/handle_mcp/beholdning.py` | Husker hvad I har hjemme. |
 | `src/handle_mcp/samling.py` | Jeres opskriftssamling: retter I stoler på. |
 | `src/handle_mcp/madplan.py` | Ugeplanen: gemt med kode, godkendelse og præcis kurv. |
+| `src/handle_mcp/opskrifter_web.py` | Henter opskrifter fra jeres opskriftssider (fire formater). |
 | `src/handle_mcp/telegram.py` | Jeres Telegram-bot: send, modtag, parring og OK fra telefonen. |
 | `src/handle_mcp/historik.py` | Købsmønster ud fra kvitteringer: basisvarer, favoritter og budget. |
 | `src/handle_mcp/profil.py` | Personer, ugebudget, præferencer og ting at undgå. |

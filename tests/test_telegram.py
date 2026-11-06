@@ -192,8 +192,38 @@ async def test_fremmed_kan_ikke_godkende(tg, monkeypatch):
     monkeypatch.setattr(server, "hent_butik", lambda _n: butik)
     plan = await server.gem_madplan("nemlig", ["Man"], [{"vare_id": "1", "navn": "x", "antal": 1, "pris": 1.0}])
     tg.besked(666, f"OK {plan['kode']}", navn="Fremmed")
+    tg.besked(666, "bestil", navn="Fremmed")
     await telegram.hent_og_haandter(0)
     assert butik.kald == [] and tg.sendt == []
+
+
+async def test_bestil_fra_telefonen_og_claude_ser_det(tg, monkeypatch):
+    butik = FalskButik()
+    monkeypatch.setattr(server, "hent_butik", lambda _n: butik)
+    par(tg, 1)
+    await telegram.hent_og_haandter(0)
+    await server.gem_madplan("nemlig", ["Man"], [{"vare_id": "7", "navn": "x", "antal": 1, "pris": 1.0}])
+    tg.besked(1, "Bestil det bare")
+    await telegram.hent_og_haandter(0)
+    assert butik.kald == [{"7": 1}]
+    svar = await server.vent_paa_svar(1)
+    assert svar[0]["fra"] == "handle-botten" and "fyldt" in svar[0]["tekst"]
+
+
+async def test_rettelse_er_ikke_bestil(tg, monkeypatch):
+    butik = FalskButik()
+    monkeypatch.setattr(server, "hent_butik", lambda _n: butik)
+    par(tg, 1)
+    await telegram.hent_og_haandter(0)
+    await server.gem_madplan("nemlig", ["Man"], [{"vare_id": "7", "navn": "x", "antal": 1, "pris": 1.0}])
+    tg.besked(1, "ja, men uden laks")
+    await telegram.hent_og_haandter(0)
+    assert butik.kald == []
+    assert [b["tekst"] for b in await server.vent_paa_svar(1)] == ["ja, men uden laks"]
+
+
+async def test_vent_paa_svar_uden_svar(tg):
+    assert await server.vent_paa_svar(1) == {"ingen_svar_endnu": True}
 
 
 # --- lytteren starter selv ----------------------------------------------------------

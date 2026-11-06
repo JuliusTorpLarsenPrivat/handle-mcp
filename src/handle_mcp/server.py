@@ -19,7 +19,7 @@ from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from handle_mcp import beholdning, data, genindlaes, historik, login, lokal, madplan, maengde, persondata, profil, samling, telegram, vagt
+from handle_mcp import beholdning, data, genindlaes, historik, login, lokal, madplan, maengde, opskrifter_web, persondata, profil, samling, telegram, vagt
 from handle_mcp import butikker as butik_modul
 from handle_mcp import sammenlign as sml
 
@@ -312,29 +312,71 @@ async def fjern_opskrift(navn: str) -> Any:
     return {"fjernet": navn}
 
 
-@mcp.prompt(title="Ugeplan", description="Lav ugens madplan og indkøb, og gør kurven klar efter jeres OK")
+@mcp.prompt(title="Ugeplan", description="Ugens madplan: menu, rettelser, pris og 'bestil' via Telegram")
 def ugeplan(aftener: int = 7, butik: str = "begge") -> str:
     """Hele ugeplanen, startet manuelt (indtil en maskine kan starte den automatisk)."""
-    return f"""Lav vores ugeplan for {aftener} aftener. Butik: {butik}. Følg trinene og spring ikke over.
+    return f"""Lav vores ugeplan for {aftener} aftener. Butik: {butik}. Følg trinene i rækkefølge.
+Er Telegram sat op, foregår al snak med husstanden der (send_besked og vent_paa_svar).
+Ellers foregår den her i chatten.
 
-1. Læs vis_profil, koebsmoenster (med andel_af_indkoeb fra profilens note), vis_beholdning
-   og vis_opskrifter. Har garmin-værktøjerne, så tag dagsstatus og træninger de seneste 14 dage.
-2. Spørg kort, hvad vi har i køleskabet nu, og om der er noget særligt denne uge (gæster,
-   aftener ude, vildt fra Julius). Er Telegram sat op, så send spørgsmålet med send_besked og
-   bed brugeren sige til, når der er svar, og læs dem så med vis_beskeder. Ellers spørg her.
-   Gem svaret med opdater_beholdning. Vent på svaret.
-3. Foreslå {aftener} retter, der passer til profilen og det, vi plejer at købe. Brug hellere
-   jeres egne opskrifter end opfundne. Brug det, vi har hjemme, først.
-4. Lav indkøbslisten med mængder ("500 g hakket oksekød"), uden det vi har hjemme. Tag
-   basisvarer med, der er snart_tom. Prissæt med sammenlign_liste (oekologisk efter profilen).
-5. Vær grundig: gå alternativerne igennem, søg igen på usikre linjer med bedre søgeord, og vælg
-   ud fra pris, mængde og kvalitet. Brug tip om mængdetilbud, hvis det giver mening.
-6. Vælg butik og gem med gem_madplan (vare_id, navn, antal pakker og linjens pris for hver vare).
-7. Vis madplanen, de vigtigste valg med en kort begrundelse, samlet pris mod ugebudget og vores
-   normale forbrug. Er Telegram sat op, så send sms_tekst med send_besked (lytteren på pc'en
-   fylder kurven, når en af os svarer "OK <kode>"). Ellers vis sms_tekst i en kodeblok.
-8. Stop her. Først når brugeren selv skriver "OK <kode>", må du kalde fyld_kurv_fra_madplan.
-   Bestil og betal aldrig: vi vælger selv leveringstid og betaler i butikkens app."""
+FORBEREDELSE (stille, uden at spørge nogen)
+1. Læs vis_profil, koebsmoenster (andel_af_indkoeb fra profilens note), vis_beholdning og
+   vis_opskrifter. Har du garmin-værktøjerne, så tag dagsstatus og træninger 14 dage tilbage.
+
+TRIN 1: KØLESKABET
+2. Spørg kort, hvad vi har i køleskabet, og om der er noget særligt denne uge (gæster,
+   aftener ude, vildt fra Julius). Vent på svaret med vent_paa_svar: kald den igen, til der er
+   svar, i op til 20 minutter. Gem svaret med opdater_beholdning.
+
+TRIN 2: MENUEN (uden priser, men med et prisskøn)
+3. Find {aftener} retter fra vores opskriftssider (Valdemarsro, Arla, DR Mad, Madens Verden,
+   HelloFresh, Årstiderne). Søg på nettet og hent dem med hent_opskrift_fra_link, eller tag dem fra
+   vis_opskrifter. Brug det, vi har hjemme, først. Ram profilen og det, vi plejer at købe.
+4. Skøn prisen pr. ret ud fra hovedingredienserne og kendte priser (koebsmoenster, tidligere
+   søgninger). Hold menuen under ugebudgettet (vis_profil), og læg dig gerne tæt på vores normale
+   forbrug.
+5. Send menuen kort: én linje pr. dag med ret, tid og skønnet pris, og til sidst det samlede skøn
+   mod budgettet. Spørg: "Rettelser, eller er menuen god?" Vent på svaret.
+6. Ret menuen, til den er god. Gør det en rettelse meget dyrere, så sig det og foreslå et
+   alternativ. Først når menuen er godkendt, går du videre.
+
+TRIN 3: PRISEN
+7. Lav indkøbslisten ud fra opskrifternes ingredienser med mængder til vores antal personer,
+   minus det vi har hjemme. Tag basisvarer med, der er snart_tom. Prissæt med sammenlign_liste
+   (oekologisk efter profilen). Vær grundig: gå alternativerne igennem, søg igen på usikre linjer,
+   og vælg ud fra pris, mængde og kvalitet.
+8. Er totalen over ugebudgettet, så find konkrete billigere udskiftninger og nævn dem.
+9. Vælg butik og gem med gem_madplan. Send: butik, total inkl. levering mod budget,
+   antal varer, de 3-5 vigtigste valg kort, evt. budgetadvarsel, og "Skriv bestil, eller ret noget".
+
+TRIN 4: BESTIL
+10. Lytteren fylder kurven, når en af os svarer "bestil" (eller "ok"/"ja"), og sender besked.
+    Vent med vent_paa_svar og fortæl, hvad der skete. Kommer der rettelser i stedet, så ret,
+    gem en ny plan med gem_madplan (den gamle annulleres selv) og send den nye total.
+11. Bestil og betal aldrig selv: vi vælger leveringstid og betaler i butikkens app."""
+
+
+@vaerktoej(LOKAL_LAESER)
+async def vent_paa_svar(sekunder: int = 50) -> Any:
+    """Vent på svar fra husstanden på Telegram (højst 55 sekunder pr. kald). Giver de nye svar,
+    eller {"ingen_svar_endnu": true}. Kald den igen, mens I venter. Svar fra "handle-botten"
+    fortæller, at kurven er fyldt efter et "bestil" (eller hvorfor den ikke blev det)."""
+    try:
+        nye = await telegram.vent_paa_svar(sekunder)
+    except lokal.LokalFejl as fejl:
+        raise ToolError(str(fejl)) from None
+    return persondata.rens(nye) if nye else {"ingen_svar_endnu": True}
+
+
+@vaerktoej(LAESER)
+async def hent_opskrift_fra_link(link: str) -> Any:
+    """Hent en opskrift fra et link på husstandens opskriftssider: Valdemarsro, Arla, DR Mad,
+    Madens Verden, HelloFresh og Årstiderne. Giver navn, antal personer, tid og ingredienser med
+    mængder. Find linket med websøgning på de sider. Gem retter, de kan lide, med gem_opskrift."""
+    try:
+        return data.til_json(await opskrifter_web.hent(link))
+    except opskrifter_web.OpskriftFejl as fejl:
+        raise ToolError(str(fejl)) from None
 
 
 @vaerktoej(SKRIVER)
@@ -396,8 +438,9 @@ async def vis_madplan(kode: str | None = None) -> Any:
 @vaerktoej(SKRIVER)
 async def fyld_kurv_fra_madplan(kode: str, godkendelse: str, kurven_maa_have_andet: bool = False) -> Any:
     """Læg PRÆCIS varerne fra en godkendt madplan i butikkens kurv. Ændrer kun kurven.
-    Brug det KUN, når brugeren selv har skrevet sin godkendelse med koden, fx "OK UGE-4821".
-    `godkendelse` er brugerens egne ord, ordret. Står koden der ikke, sker der intet.
+    Brug det KUN, når brugeren selv har godkendt: med koden ("OK UGE-4821") eller et kort
+    "bestil"/"ok"/"ja", når planen er den eneste ventende. `godkendelse` er brugerens egne ord,
+    ordret. Er det ikke en klar godkendelse ("ja, men uden laks"), sker der intet.
     En plan kan kun bruges én gang. Er kurven ikke tom, stopper den, medmindre brugeren har sagt,
     at det er i orden (`kurven_maa_have_andet=True`). Bestiller og betaler ALDRIG: brugeren
     vælger selv leveringstid og betaler i butikkens app. Vis bagefter kurven og evt. advarsler."""

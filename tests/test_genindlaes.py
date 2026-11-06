@@ -81,7 +81,7 @@ async def test_tastefejl_giver_klar_besked_til_claude(pakke, tmp_path, monkeypat
 async def test_vaerktoejerne_beholder_deres_felter():
     """Indpakningen må ikke skjule parametrene for Claude."""
     vaerktoejer = {t.name: t for t in await server.mcp.list_tools()}
-    assert len(vaerktoejer) == 22
+    assert len(vaerktoejer) == 24
     felter = vaerktoejer["sammenlign_liste"].input_schema["properties"]
     assert {"varer", "antal", "butikker", "oekologisk"} <= set(felter)
     assert "OK" in vaerktoejer["fyld_kurv_fra_madplan"].description
