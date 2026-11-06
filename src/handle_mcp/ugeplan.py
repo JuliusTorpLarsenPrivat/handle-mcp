@@ -40,7 +40,12 @@ TRIN 2: MENUEN (uden priser, men med et prisskøn)
 3. Find retterne på vores opskriftssider (Valdemarsro, Arla, DR Mad, Madens Verden, HelloFresh,
    Årstiderne). Søg på nettet og hent dem med hent_opskrift_fra_link, eller tag dem fra
    vis_opskrifter. Brug det, vi har hjemme, først. Ram profilen og det, vi plejer at købe.
-   De faste måltider i profilen (fx morgenmad og weekendfrokost) hører med hver uge.
+   Brug vores egne varer (fx vildt fra fryseren) præcis som vi sagde: siger vi "rådyr
+   lørdag", så kun lørdag, også selvom der er mere (fundet i en test: rådyr kom også tirsdag).
+   De faste måltider i profilen (fx morgenmad og weekendfrokost) hører med hver uge og regnes
+   for HELE ugen frem til næste levering (7 dage), ikke kun de aftener, vi skal have
+   aftensmad. "Morgenmad hver dag" = 7 morgener, "frokost lørdag og søndag" = begge dage
+   (fundet i en test: kun 6 morgener, og søndagsfrokosten manglede).
 4. Skøn prisen pr. ret ud fra hovedingredienserne og kendte priser (koebsmoenster, tidligere
    søgninger), og skøn de faste måltider for sig. Læg levering og poser til (nemlig ca. 36 kr
    levering + ca. 18 kr poser). Hold det samlede skøn under ugens budget.

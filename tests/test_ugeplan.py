@@ -98,3 +98,11 @@ async def test_forloebet_dækker_ret_der_ikke_kan_koebes(tg):
     f = (await server.ugeplan_forloeb())["forloeb"]
     assert "NÅR EN RET IKKE KAN KØBES" in f and "også efter at menuen er godkendt" in f
     assert "Ændret:" in f and "EFTER \"bestil\"" in f and "ikke lade" in f
+
+
+async def test_forloebet_fra_anden_test(tg):
+    """Fundet i test 2: kun 6 morgener og ingen søndagsfrokost; rådyr også tirsdag."""
+    kobl_paa(1)
+    f = (await server.ugeplan_forloeb())["forloeb"]
+    assert "HELE ugen frem til næste levering (7 dage)" in f
+    assert "præcis som vi sagde" in f
