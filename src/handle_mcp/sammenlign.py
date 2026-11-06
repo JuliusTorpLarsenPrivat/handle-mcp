@@ -372,6 +372,9 @@ async def kandidater(butik: Butik, soegning: str, tilbud: list[Vare]) -> list[Va
     Butikkens søgning har allerede sorteret irrelevante varer fra, men tilbudslisten er
     usorteret. Derfor kommer et tilbud kun med, hvis alle ord passer direkte (ikke via et
     sammensat ord). Bagefter rangeres alt ens af rangeret()."""
+    from handle_mcp.lokal import marker_claude_aktiv
+
+    marker_claude_aktiv()
     hits = await butik.soeg(soegning, SOEGEDYBDE)
     kendte = {v.id for v in hits}
     return hits + [v for v in tilbud if v.id not in kendte and point(soegning, v, sammensat=False) >= 1]
@@ -401,6 +404,9 @@ async def prissaet(butik: Butik, liste: list[tuple[str, int]], oeko: bool = Fals
 
 
 async def sammenlign(butikker: list[Butik], liste: list[tuple[str, int]], oeko: bool = False) -> list[Butiksresultat]:
+    from handle_mcp.lokal import marker_claude_aktiv
+
+    marker_claude_aktiv()  # prissætning tager minutter: botten skal vide, at Claude er i gang
     """Butikkerne prissættes samtidig. Den billigste med flest fundne varer står først."""
     resultater = await asyncio.gather(*(prissaet(b, liste, oeko) for b in butikker))
     return sorted(resultater, key=lambda r: (r.fejl is not None, len(r.mangler), r.i_alt))

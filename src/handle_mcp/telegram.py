@@ -28,7 +28,7 @@ import httpx
 import keyring
 import keyring.errors
 
-from handle_mcp import madplan, profil
+from handle_mcp import lokal, madplan, profil
 from handle_mcp.lokal import laes, skriv
 from handle_mcp.login import TJENESTE
 from handle_mcp.vagt import VagtFejl, ny_klient, send
@@ -166,6 +166,7 @@ async def vent_paa_svar(sekunder: float = 50) -> list[dict]:
 
     slut = asyncio.get_running_loop().time() + max(1.0, min(sekunder, 55))
     while asyncio.get_running_loop().time() < slut:
+        lokal.marker_claude_aktiv()  # så botten ved, at nogen lytter
         if antal_ulaeste():
             return beskeder(kun_nye=True)
         await asyncio.sleep(2)
@@ -173,6 +174,8 @@ async def vent_paa_svar(sekunder: float = 50) -> list[dict]:
 
 
 def beskeder(kun_nye: bool = True, marker_laest: bool = True) -> list[dict]:
+    if marker_laest:
+        lokal.marker_claude_aktiv()
     d = laes("beskeder")
     alle = d.get("beskeder", [])
     # "modtaget", ikke "tid": persondatafilteret fjerner felter, der hedder "tid" (Bilkas bruger-id)
@@ -284,6 +287,7 @@ async def send_til_alle(tekst: str) -> int:
     for chat_id in modtagere:
         await api("sendMessage", chat_id=int(chat_id), text=tekst)
     _gem_besked(SENDT_AF, tekst, laest=True)  # så hele samtalen kan læses bagefter
+    lokal.marker_claude_aktiv()
     try:
         start_lytter_i_baggrunden()  # så jeres svar bliver hentet, uden at nogen skal huske det
     except OSError as fejl:
@@ -331,6 +335,19 @@ async def _godkendelse(chat_id: str, navn: str, tekst: str) -> bool:
     return True
 
 
+CLAUDE_LYTTER_SEK = 5 * 60  # har Claude ikke været i gang i 5 min, lytter den ikke
+IKKE_LYTTER = "Modtaget. Claude er ikke i gang lige nu. Skal det videre nu, så skriv fortsæt i Claude-chatten."
+
+
+def kvittering() -> str:
+    """Kort "Modtaget." når Claude er i gang. Ellers siges det, så ingen venter forgæves på et svar."""
+    try:
+        siden = lokal.sekunder_siden_claude()
+    except lokal.LokalFejl:
+        siden = None
+    return "Modtaget." if siden is not None and siden < CLAUDE_LYTTER_SEK else IKKE_LYTTER
+
+
 async def haandter(opdatering: dict) -> str | None:
     """Én besked fra Telegram. Giver en kort logtekst (uden beskedens indhold)."""
     besked = opdatering.get("message") or opdatering.get("edited_message") or {}
@@ -358,7 +375,7 @@ async def haandter(opdatering: dict) -> str | None:
         except Exception as fejl:  # noqa: BLE001  beskeden må aldrig gå tabt
             log.warning("Kunne ikke gemme ønsket i profilen: %s", fejl)
     _gem_besked(navn, tekst, husket=husket)
-    await _svar(chat_id, "Modtaget.")  # kort: Claude arbejder typisk på det lige nu
+    await _svar(chat_id, kvittering())
     return f"besked fra {navn} gemt" + (" (også i profilen)" if husket else "")
 
 

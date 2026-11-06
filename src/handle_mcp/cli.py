@@ -83,9 +83,17 @@ async def _telegram_lyt(timer: float) -> int:
     start = datetime.now(telegram.TIDSZONE).isoformat(timespec="minutes")
     print(f"{time.strftime('%d-%m %H:%M')} Lytter efter beskeder til {navn} i højst {timer:g} timer. Stop med Ctrl+C.", flush=True)
     print(f"Tilkoblede: {', '.join(telegram.chats().values()) or 'ingen endnu'}", flush=True)
+    from handle_mcp import genindlaes
+
+    genindlaes.start()
     slut = time.monotonic() + timer * 3600
     fejl_i_traek = 0
     while time.monotonic() < slut:
+        try:  # ny kode uden at genstarte lytteren (som serveren, se genindlaes.py)
+            if nye := genindlaes.tjek():
+                print(f"{time.strftime('%H:%M')} Ny kode indlæst: {len(nye)} moduler", flush=True)
+        except Exception as fejl:  # noqa: BLE001  en tastefejl må ikke stoppe lytteren
+            print(f"{time.strftime('%H:%M')} Ny kode kunne ikke indlæses, kører videre: {fejl}", flush=True)
         if telegram.ugen_er_afsluttet(start):
             print(f"{time.strftime('%H:%M')} Ugens plan er afsluttet. Lytteren stopper.", flush=True)
             return 0

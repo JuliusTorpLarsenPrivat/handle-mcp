@@ -306,7 +306,7 @@ async def test_oensker_gemmes_i_profilen_af_botten_selv(tg, tekst):
     assert linje.endswith(f"Maja: {tekst}")
     (b,) = await server.vis_beskeder()
     assert b["gemt_i_profilen"] is True and b["tekst"] == tekst
-    assert (1, "Modtaget.") in tg.sendt  # ingen ekstra snak om det
+    assert (1, telegram.IKKE_LYTTER) in tg.sendt  # ingen snak om profilen (Claude var ikke i gang)
 
 
 @pytest.mark.parametrize(
@@ -352,3 +352,35 @@ async def test_fejl_i_profilen_taber_ikke_beskeden(tg, monkeypatch):
     tg.besked(1, "husk ingen koriander")
     await telegram.hent_og_haandter(0)
     assert [b["tekst"] for b in await server.vis_beskeder()] == ["husk ingen koriander"]
+
+
+
+# --- siger botten til, når Claude ikke lytter? (fundet i demoen, uge 48) -----------------
+
+
+async def test_svar_mens_claude_ikke_lytter_faar_besked_om_det(tg):
+    par(tg, 1)
+    await telegram.hent_og_haandter(0)
+    tg.besked(1, "vi har agurk og mel")
+    await telegram.hent_og_haandter(0)
+    assert tg.sendt[-1] == (1, telegram.IKKE_LYTTER) and "fortsæt" in telegram.IKKE_LYTTER
+
+
+async def test_svar_mens_claude_venter_faar_kort_modtaget(tg):
+    par(tg, 1)
+    await telegram.hent_og_haandter(0)
+    assert await telegram.vent_paa_svar(1) == []  # Claude venter (og markerer sig som i gang)
+    tg.besked(1, "vi har agurk og mel")
+    await telegram.hent_og_haandter(0)
+    assert tg.sendt[-1] == (1, "Modtaget.")
+
+
+async def test_claude_der_er_gaaet_i_staa_regnes_ikke_som_lyttende(tg):
+    import time
+
+    par(tg, 1)
+    await telegram.hent_og_haandter(0)
+    skriv("claude-aktiv", {"sidst": time.time() - telegram.CLAUDE_LYTTER_SEK - 1})
+    tg.besked(1, "vi har agurk og mel")
+    await telegram.hent_og_haandter(0)
+    assert tg.sendt[-1] == (1, telegram.IKKE_LYTTER)

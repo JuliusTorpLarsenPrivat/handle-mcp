@@ -92,3 +92,34 @@ def tekster(vaerdier: list | None, felt: str, maks_antal: int, maks: int = MAKS_
 
 def noegle(navn: str) -> str:
     return " ".join(navn.lower().split())
+
+
+# --- er Claude i gang? ----------------------------------------------------------------
+# Telegram-lytteren kører i sin egen proces og kan ikke se Claude. Claude markerer derfor her,
+# når den arbejder på madplanen (venter på svar, sender, prissætter, henter opskrifter), så
+# botten kan sige til, hvis et svar kommer, mens ingen lytter (fundet i brug, uge 48-demoen).
+
+AKTIV_FIL = "claude-aktiv"
+_sidst_markeret: dict[str, float] = {}  # pr. mappe (testene bruger hver sin)
+
+
+def marker_claude_aktiv() -> None:
+    """Højst én skrivning hvert 10. sekund, så en ventende løkke ikke skriver hele tiden."""
+    import time
+
+    nu = time.time()
+    m = str(mappe())
+    if nu - _sidst_markeret.get(m, 0.0) < 10:
+        return
+    _sidst_markeret[m] = nu
+    try:
+        skriv(AKTIV_FIL, {"sidst": nu})
+    except OSError:
+        pass  # må aldrig stoppe det, Claude er i gang med
+
+
+def sekunder_siden_claude() -> float | None:
+    import time
+
+    sidst = laes(AKTIV_FIL).get("sidst")
+    return time.time() - sidst if isinstance(sidst, (int, float)) else None

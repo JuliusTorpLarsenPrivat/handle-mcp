@@ -155,6 +155,9 @@ def _byg(navn, kilde, link, yield_, tid, ingredienser, side) -> WebOpskrift:
 
 
 async def hent(link: str) -> WebOpskrift:
+    from handle_mcp.lokal import marker_claude_aktiv
+
+    marker_claude_aktiv()
     try:
         url = httpx.URL(link.strip())
     except (httpx.InvalidURL, TypeError):
