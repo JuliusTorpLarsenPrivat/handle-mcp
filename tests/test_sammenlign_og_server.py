@@ -263,3 +263,20 @@ def test_procent_skal_passe():
     """Fundet live: "Chokolade 85%" blev til "Chokolade 50%", da tal blev ignoreret."""
     assert point("chokolade 85%", Vare("n", "1", "Chokolade 50%", Decimal(20), maengde="100 g")) <= 0.5
     assert point("chokolade 85%", Vare("n", "2", "Chokolade 85%", Decimal(40), maengde="100 g")) == 1
+
+
+@pytest.mark.parametrize(
+    "soegning, forkert",
+    [
+        ("Rødspættefilet fersk 400 g", Vare("n", "1", "Soltørrede fersken", Decimal(20), maengde="100 g")),
+        ("Hvidløg i net 200 g", Vare("b", "2", "Spegepølse m. paprika og hvidløg", Decimal(18), maengde="70 g")),
+    ],
+)
+def test_fundet_i_tre_madplaner(soegning, forkert):
+    """Live-tjek af tre gemte madplaner: "fersk" er ikke fersken, og "i net" er emballage."""
+    assert point(soegning, forkert) < 1
+
+
+def test_hvidloeg_i_net_finder_stadig_hvidloeg():
+    assert point("Hvidløg i net 200 g", Vare("n", "1", "Hvidløg i net", Decimal(13), maengde="200 g")) == 1
+    assert point("Timian potte øko", Vare("n", "2", "Timian øko.", Decimal(15), maengde="10,5 cm pt.")) == 1

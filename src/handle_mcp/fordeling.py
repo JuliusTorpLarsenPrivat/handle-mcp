@@ -86,6 +86,28 @@ def _mulighed(navn: str, fordeling: dict[str, list[int]], res: dict[str, Butiksr
     return Mulighed(navn, {b: l for b, l in fordeling.items() if l}, varer, gebyrer, mangler, under, usikre)
 
 
+OVERVEJ_GRAENSE = Decimal(50)  # mindre besparelser er ikke besværet med erstatninger værd
+MAKS_HULLER = 3
+
+
+def _billigere_med_huller(muligheder: list[Mulighed], bedst: Mulighed, res: dict[str, Butiksresultat], liste: list[str]) -> dict | None:
+    """En enkelt butik, der kun er droppet, fordi den mangler få varer, men ellers er klart
+    billigst. Fundet live: Bilka var ca. 300 kr billigere, men blev droppet for én manglende laks.
+    De manglende varer skønnes til prisen i den anbefalede løsning."""
+    bedste = None
+    for m in muligheder:
+        if len(m.fordeling) != 1 or m is bedst or not m.mangler or m.under_minimum or len(m.mangler) > MAKS_HULLER:
+            continue
+        (butik,) = m.fordeling
+        huller = [i for i, s in enumerate(liste) if s in m.mangler]
+        andre = [r for b, r in res.items() if b != butik]
+        skoen = m.i_alt + sum((min((p for r in andre if (p := _beloeb(r, i, res)) is not None), default=Decimal(0)) for i in huller), Decimal(0))
+        besparelse = bedst.i_alt - skoen
+        if besparelse >= OVERVEJ_GRAENSE and (bedste is None or besparelse > bedste["besparelse"]):
+            bedste = {"butik": butik, "mangler": m.mangler, "skoennet_i_alt": skoen, "besparelse": besparelse}
+    return bedste
+
+
 def find_billigste(resultater: list[Butiksresultat]) -> dict:
     """Sammenlign mulighederne og giv en anbefaling, som Claude og husstanden kan forstå."""
     res = {r.butik: r for r in resultater if not r.fejl}
@@ -155,6 +177,13 @@ def find_billigste(resultater: list[Butiksresultat]) -> dict:
             forklaring += f" Alt i {andre[0].navn} ville koste {andre[0].i_alt - bedst.i_alt:.2f} kr mere."
     if not bedst.gyldig:
         forklaring += f" OBS: mangler {', '.join(bedst.mangler) or 'intet'}; under minimum i {', '.join(bedst.under_minimum) or 'ingen'}."
+    overvej = _billigere_med_huller(muligheder, bedst, res, liste)
+    if overvej:
+        forklaring += (
+            f" MEN: alt i {overvej['butik']} ville koste ca. {overvej['skoennet_i_alt']:.0f} kr "
+            f"({overvej['besparelse']:.0f} kr mindre), hvis I finder erstatninger for: {', '.join(overvej['mangler'])}. "
+            f"Søg efter erstatninger i {overvej['butik']}, før du vælger {bedst.navn}."
+        )
     return {
         "anbefaling": bedst.navn,
         "i_alt": bedst.i_alt,
@@ -163,6 +192,7 @@ def find_billigste(resultater: list[Butiksresultat]) -> dict:
         "varer_pr_butik": bedst.varer,
         "gebyrer_pr_butik": bedst.gebyrer,
         "muligheder": {m.navn: {"i_alt": m.i_alt, "mangler": m.mangler, "under_minimum": m.under_minimum, "usikre": m.usikre} for m in muligheder},
-        "tjek_foerst": bedst.usikre,  # usikre match i den anbefalede løsning: søg igen, før kurven fyldes
+        "tjek_foerst": bedst.usikre,
+        "overvej": overvej,  # usikre match i den anbefalede løsning: søg igen, før kurven fyldes
         "forklaring": forklaring,
     }

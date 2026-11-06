@@ -181,3 +181,20 @@ def test_et_usikkert_match_i_hver_butik_giver_stadig_et_fornuftigt_valg():
     a = find_billigste([nemlig, bilka])
     assert a["anbefaling"] == "nemlig" and a["tjek_foerst"] == ["nemlig: peber → peber"]
     assert "0.00 kr mere" not in a["forklaring"]
+
+
+def test_billigere_butik_med_et_hul_naevnes():
+    """Fundet live: Bilka var ca. 300 kr billigere, men blev droppet for én manglende laks."""
+    nemlig = resultat("nemlig", [("laks", 120), ("kød", 400), ("grønt", 400)], NEMLIG_GEBYR, 550)
+    bilka = resultat("bilka", [("laks", None), ("kød", 250), ("grønt", 300)], BILKA_GEBYR, 500)
+    a = find_billigste([nemlig, bilka])
+    assert a["anbefaling"] == "nemlig"  # Bilka mangler stadig laksen
+    assert a["overvej"]["butik"] == "bilka" and a["overvej"]["mangler"] == ["laks"]
+    assert a["overvej"]["skoennet_i_alt"] == Decimal(250 + 300 + 78 + 120)
+    assert "Søg efter erstatninger i bilka" in a["forklaring"]
+
+
+def test_lille_besparelse_med_hul_naevnes_ikke():
+    nemlig = resultat("nemlig", [("laks", 120), ("kød", 400)], NEMLIG_GEBYR, 0)
+    bilka = resultat("bilka", [("laks", None), ("kød", 380)], BILKA_GEBYR, 0)
+    assert find_billigste([nemlig, bilka])["overvej"] is None

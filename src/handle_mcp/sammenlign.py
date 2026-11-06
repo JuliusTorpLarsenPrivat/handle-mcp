@@ -44,7 +44,9 @@ FORMER = {"filet", "fileter", "koed", "tern", "strimler", "stykker", "ost"}  # f
 # Ord der betyder det samme i butikkernes navne: "svinekød" hedder tit "grisekød".
 SYNONYMER = {"svine": "grise", "grise": "svine", "frosne": "frost", "frossen": "frost", "frosset": "frost"}
 # Egenskaber der tæller fuldt, uanset om de står i navnet eller i mængden ("500 g / frost").
-EGENSKABER = {"frost", "oeko", "oekologisk", "okologisk"}
+# "fersk" er en egenskab, ikke en vare: "Rødspættefilet fersk" blev til "Soltørrede fersken"
+EGENSKABER = {"frost", "oeko", "oekologisk", "okologisk", "fersk", "frisk", "friske"}
+EMBALLAGE = re.compile(r"\s(?:i|på|paa)\s+(?:net|bakke|pose|potte|glas|dåse|daase|tube|spand|karton)\b|\b(?:potte|bdt\.?|bundt)\b", re.I)
 ENHEDSORD = {"g", "gr", "kg", "ml", "cl", "dl", "l", "ltr", "stk", "x", "pk", "bdt"}
 PROCENT = re.compile(r"(\d+(?:[.,]\d+)?)\s*%")
 
@@ -101,6 +103,8 @@ def point(soegning: str, vare: Vare, sammensat: bool = True) -> float:
     """Andelen af søgeordene, der passer med varen. Ord i varens hoveddel (og mærket) giver
     fuldt point, ord i tilbehør eller mængde højst halvt. Står der selv tilbehør i søgningen
     ("makrel i tomat", "tun i vand"), tæller tilbehøret fuldt."""
+    # Emballage er ikke tilbehør: "Hvidløg i net" blev til spegepølse m. hvidløg (fundet live)
+    soegning = EMBALLAGE.sub(" ", soegning)
     # Tal og enheder er mængde, ikke vare: "400 g" må ikke gøre majsmel til nakkekoteletter
     oensket = {o for o in ord_i(soegning) - FYLDORD - ENHEDSORD if not o.isdigit()}
     if not oensket:
