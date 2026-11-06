@@ -17,8 +17,10 @@ Sikkerhed:
 from __future__ import annotations
 
 import logging
+import os
 import re
 import secrets
+import sys
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -163,6 +165,85 @@ def beskeder(kun_nye: bool = True, marker_laest: bool = True) -> list[dict]:
 # --- sende og lytte --------------------------------------------------------------
 
 
+# --- lytteren starter selv ---------------------------------------------------------
+
+AUTOSTART = True  # slås fra i testene
+LAAS = "telegram-lytter.lock"
+_laas_fil = None  # holdes åben, så længe denne proces er lytteren
+
+
+def tag_laas() -> bool:
+    """Bliv den eneste lytter. False hvis en anden lytter allerede kører."""
+    global _laas_fil
+    from handle_mcp.lokal import mappe
+
+    mappe().mkdir(parents=True, exist_ok=True)
+    f = open(mappe() / LAAS, "a+")  # noqa: SIM115  skal holdes åben
+    try:
+        if sys.platform == "win32":
+            import msvcrt
+
+            f.seek(0)
+            msvcrt.locking(f.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        f.close()
+        return False
+    _laas_fil = f
+    return True
+
+
+def slip_laas() -> None:
+    global _laas_fil
+    if _laas_fil:
+        _laas_fil.close()
+        _laas_fil = None
+
+
+def lytter_koerer() -> bool:
+    if tag_laas():
+        slip_laas()
+        return False
+    return True
+
+
+def start_lytter_i_baggrunden(timer: float = 24) -> bool:
+    """Start lytteren som et selvstændigt program uden vindue, hvis den ikke kører.
+    Den skriver til telegram-lytter.log og stopper selv, når ugen er afsluttet."""
+    if not AUTOSTART or lytter_koerer():
+        return False
+    import subprocess
+
+    from handle_mcp.lokal import mappe
+
+    log_fil = open(mappe() / "telegram-lytter.log", "a", encoding="utf-8")  # noqa: SIM115
+    kommando = [sys.executable, "-m", "handle_mcp.server", "telegram", f"{timer:g}"]
+    flag = 0
+    if sys.platform == "win32":
+        # Selvstændig proces uden vindue. "Breakaway" lader den leve videre, hvis Claude Desktop lukkes.
+        flag = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | 0x01000000
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    try:
+        subprocess.Popen(kommando, stdout=log_fil, stderr=log_fil, stdin=subprocess.DEVNULL, creationflags=flag, env=env, close_fds=True)
+    except OSError:  # Claude Desktop tillader ikke "breakaway": lytteren lever så, så længe appen kører
+        subprocess.Popen(kommando, stdout=log_fil, stderr=log_fil, stdin=subprocess.DEVNULL, creationflags=flag & ~0x01000000, env=env, close_fds=True)
+    log.warning("Telegram-lytteren er startet i baggrunden.")
+    return True
+
+
+def ugen_er_afsluttet(siden: str) -> bool:
+    """Er der lavet en plan, efter lytteren startede, og er den ikke længere afventende?"""
+    try:
+        planer = madplan._alle()
+    except Exception:  # noqa: BLE001
+        return False
+    nye = [p for p in planer if p.oprettet >= siden]
+    return bool(nye) and all(p.status != "afventer" for p in nye)
+
+
 async def send_til_alle(tekst: str) -> int:
     tekst = tekst.strip()
     if not tekst:
@@ -174,6 +255,10 @@ async def send_til_alle(tekst: str) -> int:
         raise TelegramFejl("Ingen telefoner er koblet på botten endnu. Kør: handle-mcp telegram-opsaet")
     for chat_id in modtagere:
         await api("sendMessage", chat_id=int(chat_id), text=tekst)
+    try:
+        start_lytter_i_baggrunden()  # så jeres svar bliver hentet, uden at nogen skal huske det
+    except OSError as fejl:
+        log.warning("Kunne ikke starte lytteren: %s", fejl)
     return len(modtagere)
 
 

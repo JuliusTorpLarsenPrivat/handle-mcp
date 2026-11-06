@@ -70,16 +70,25 @@ async def _telegram_lyt(timer: float) -> int:
 
     from handle_mcp import telegram
 
+    from datetime import datetime
+
+    if not telegram.tag_laas():
+        print("En lytter kører allerede. Denne stopper igen.")
+        return 0
     try:
         navn = await telegram.bot_navn()
     except telegram.TelegramFejl as fejl:
         print(fejl)
         return 1
-    print(f"Lytter efter beskeder til {navn} i {timer:g} timer. Stop med Ctrl+C.")
-    print(f"Tilkoblede: {', '.join(telegram.chats().values()) or 'ingen endnu'}")
+    start = datetime.now(telegram.TIDSZONE).isoformat(timespec="minutes")
+    print(f"{time.strftime('%d-%m %H:%M')} Lytter efter beskeder til {navn} i højst {timer:g} timer. Stop med Ctrl+C.", flush=True)
+    print(f"Tilkoblede: {', '.join(telegram.chats().values()) or 'ingen endnu'}", flush=True)
     slut = time.monotonic() + timer * 3600
     fejl_i_traek = 0
     while time.monotonic() < slut:
+        if telegram.ugen_er_afsluttet(start):
+            print(f"{time.strftime('%H:%M')} Ugens plan er afsluttet. Lytteren stopper.", flush=True)
+            return 0
         try:
             for h in await telegram.hent_og_haandter(vent_sekunder=25):
                 print(f"{time.strftime('%H:%M')} {h}", flush=True)

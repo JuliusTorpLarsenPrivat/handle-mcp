@@ -50,6 +50,7 @@ def tg(tmp_path, monkeypatch):
     falsk = FalskTelegram()
     monkeypatch.setattr(telegram, "_transport", httpx.MockTransport(falsk))
     monkeypatch.setattr(telegram, "hent_token", lambda: TOKEN)
+    monkeypatch.setattr(telegram, "AUTOSTART", False)  # ingen rigtige lyttere i testene
     return falsk
 
 
@@ -193,3 +194,52 @@ async def test_fremmed_kan_ikke_godkende(tg, monkeypatch):
     tg.besked(666, f"OK {plan['kode']}", navn="Fremmed")
     await telegram.hent_og_haandter(0)
     assert butik.kald == [] and tg.sendt == []
+
+
+# --- lytteren starter selv ----------------------------------------------------------
+
+
+def test_kun_en_lytter_ad_gangen(tmp_path, monkeypatch):
+    monkeypatch.setenv("HANDLE_MCP_DATA", str(tmp_path))
+    assert telegram.tag_laas()
+    try:
+        assert telegram.lytter_koerer()  # låsen er taget: en ny lytter må ikke starte
+    finally:
+        telegram.slip_laas()
+    assert not telegram.lytter_koerer()
+
+
+def test_lytteren_startes_ved_foerste_besked(tg, monkeypatch):
+    startet = []
+    monkeypatch.setattr(telegram, "AUTOSTART", True)
+    monkeypatch.setattr("subprocess.Popen", lambda kommando, **kw: startet.append(kommando))
+    assert telegram.start_lytter_i_baggrunden()
+    assert startet and startet[0][-3:] == ["handle_mcp.server", "telegram", "24"]
+    assert telegram.tag_laas()  # en kørende lytter ville holde låsen; her er den bare startet som falsk
+    try:
+        assert not telegram.start_lytter_i_baggrunden()  # kører allerede: ingen nr. to
+    finally:
+        telegram.slip_laas()
+    assert len(startet) == 1
+
+
+async def test_send_starter_lytteren(tg, monkeypatch):
+    kald = []
+    monkeypatch.setattr(telegram, "start_lytter_i_baggrunden", lambda: kald.append(1) or True)
+    par(tg, 1)
+    await telegram.hent_og_haandter(0)
+    await server.send_besked("Hvad har I i køleskabet?")
+    assert kald == [1]
+
+
+async def test_ugen_er_afsluttet_naar_planen_er_brugt(tg, monkeypatch):
+    from handle_mcp import madplan
+
+    start = (datetime.now(telegram.TIDSZONE) - timedelta(minutes=1)).isoformat(timespec="minutes")
+    assert not telegram.ugen_er_afsluttet(start)  # ingen plan endnu: bliv ved med at lytte
+    p = madplan.gem("nemlig", ["Man"], [{"vare_id": "1", "navn": "x", "antal": 1, "pris": 1.0}])
+    assert not telegram.ugen_er_afsluttet(start)  # planen venter på OK
+    madplan.saet_status(p.kode, "kurv fyldt", "test")
+    assert telegram.ugen_er_afsluttet(start)
+    fremtid = (datetime.now(telegram.TIDSZONE) + timedelta(hours=1)).isoformat(timespec="minutes")
+    assert not telegram.ugen_er_afsluttet(fremtid)  # gamle planer tæller ikke
