@@ -81,7 +81,11 @@ def tjek() -> list[str]:
         start()
         return []
     nu = _tider()
-    aendret = [m for m in RAEKKEFOLGE if m in nu and nu[m] != _kendt.get(m)]
+    # Et modul, der først er blevet indlæst siden sidst (fx Bilka ved første Bilka-søgning), er
+    # ikke ændret: husk bare dets tidsstempel. Fundet i ende-til-ende-testen.
+    for m in nu:
+        _kendt.setdefault(m, nu[m])
+    aendret = [m for m in RAEKKEFOLGE if m in nu and nu[m] != _kendt[m]]
     if not aendret:
         return []
     # Tjek først, at alle ændrede filer kan oversættes. Ved en tastefejl skiftes intet ud.

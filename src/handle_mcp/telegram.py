@@ -185,7 +185,9 @@ def beskeder(kun_nye: bool = True, marker_laest: bool = True) -> list[dict]:
 
 AUTOSTART = True  # slås fra i testene
 LAAS = "telegram-lytter.lock"
-_laas_fil = None  # holdes åben, så længe denne proces er lytteren
+# Holdes åben, så længe denne proces er lytteren. globals().get: en genindlæsning af modulet
+# (genindlaes.py) må ikke glemme låsen, ellers kan en lytter nr. to starte.
+_laas_fil = globals().get("_laas_fil")
 
 
 def tag_laas() -> bool:

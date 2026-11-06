@@ -51,6 +51,37 @@ def test_aendret_modul_og_dem_efter_det_genindlaeses(pakke):
     assert genindlaes.tjek() == []  # og kun én gang
 
 
+def test_foerste_indlaesning_er_ikke_en_aendring(pakke, monkeypatch):
+    """Fundet i ende-til-ende-testen: Bilka indlæses først ved første Bilka-søgning, og det
+    blev opfattet som ny kode, så halvdelen af modulerne blev genindlæst uden grund."""
+    (pakke / "c.py").write_text("X = 1\n", encoding="utf-8")
+    monkeypatch.setattr(genindlaes, "RAEKKEFOLGE", ("gentest.a", "gentest.b", "gentest.c"))
+    genindlaes.start()  # c er ikke indlæst endnu
+    import gentest.c  # noqa: F401  nu bliver den brugt for første gang
+
+    try:
+        assert genindlaes.tjek() == []
+        skriv(pakke / "c.py", "X = 2\n")
+        assert genindlaes.tjek() == ["gentest.c"]  # men en rigtig ændring opdages stadig
+    finally:
+        sys.modules.pop("gentest.c", None)
+
+
+def test_laasen_overlever_genindlaesning(tmp_path, monkeypatch):
+    """Ellers kunne en lytter nr. to starte, når lytteren selv fik ny kode."""
+    import importlib
+
+    from handle_mcp import telegram
+
+    monkeypatch.setenv("HANDLE_MCP_DATA", str(tmp_path))
+    assert telegram.tag_laas()
+    try:
+        importlib.reload(telegram)
+        assert telegram._laas_fil is not None and telegram.lytter_koerer()
+    finally:
+        telegram.slip_laas()
+
+
 def test_ny_fejlklasse_fanges_med_modulopslag(pakke):
     """Derfor slår server.py fejlklasser op i modulet ved hvert kald (butik_modul.ButikFejl)."""
     gammel = sys.modules["gentest.a"].Fejl
