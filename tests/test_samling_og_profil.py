@@ -99,7 +99,7 @@ async def test_vaerktoejerne_i_serveren():
 
     from handle_mcp import server
 
-    await server.opdater_profil(personer=2, ugebudget_kr=1000)
+    await server.opdater_profil({"personer": 2, "ugebudget_kr": 1000})
     assert (await server.vis_profil())["ugebudget_kr"] == 1000
     await server.gem_opskrift("Tacos", link="https://www.nemlig.com/opskrifter/tacos", tags=["fredag"])
     assert (await server.vis_opskrifter(tag="fredag"))[0]["link"].endswith("/tacos")
@@ -107,4 +107,14 @@ async def test_vaerktoejerne_i_serveren():
     with pytest.raises(ToolError, match="ingen opskrift"):
         await server.fjern_opskrift("tacos")
     with pytest.raises(ToolError, match="Personer"):
-        await server.opdater_profil(personer=99)
+        await server.opdater_profil({"personer": 99})
+
+
+async def test_ukendte_felter_giver_klar_besked():
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    from handle_mcp import server
+
+    with pytest.raises(ToolError, match="Ukendte felter: farve.*Mulige felter: personer"):
+        await server.opdater_profil({"farve": "blå"})
+    assert "varepraeferencer" in (await server.vis_profil())["felter"]

@@ -1,0 +1,833 @@
+{
+ "instruktioner": "Dagligvarer fra nemlig.com og BilkaToGo. Beder brugeren om en madplan eller ugens indkøb af mad, så kald ugeplan_forloeb først og følg forløbet trin for trin. Er Telegram sat op, foregår al snak med husstanden der, ikke i chatten. Du kan søge, se tilbud og opskrifter, sammenligne priser og ændre antal i kurven. Du kan også huske, hvad brugerne har hjemme (beholdning), og tage højde for det i madplaner. Til madplaner: læs vis_profil (personer, ugebudget, præferencer, ting at undgå), vælg helst retter fra vis_opskrifter (retter brugerne stoler på), og sig til, hvis prisen går over ugebudgettet. Vær grundig, når du vælger varer: tag ikke bare første bedste eller opskriftens standardvare. Skriv mængden med i søgningen, prøv flere søgetekster, gå alternativerne igennem og vælg ud fra pris, mængde og kvalitet (rå varer, økologi hvis profilen siger det, ikke ultraforarbejdet). Fortæl kort, hvorfor du valgte som du gjorde. Du kan ALDRIG bestille, betale eller vælge leveringstid: det gør brugeren selv på butikkens hjemmeside. Spørg altid brugeren, før du ændrer kurven, og vis bagefter hvad der ligger i den.",
+ "prompts": {
+  "ugeplan": {
+   "arguments": [],
+   "description": "Ugens madplan: køleskab, menu, pris og 'bestil' via Telegram",
+   "name": "ugeplan",
+   "title": "Ugeplan"
+  }
+ },
+ "vaerktoejer": {
+  "fjern_opskrift": {
+   "annotations": {
+    "destructive_hint": true,
+    "idempotent_hint": false,
+    "open_world_hint": false,
+    "read_only_hint": false
+   },
+   "description": "Fjern en ret fra opskriftssamlingen. Spørg brugeren først.",
+   "input_schema": {
+    "properties": {
+     "navn": {
+      "title": "Navn",
+      "type": "string"
+     }
+    },
+    "required": [
+     "navn"
+    ],
+    "title": "fjern_opskriftArguments",
+    "type": "object"
+   }
+  },
+  "fyld_kurv_fra_madplan": {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "open_world_hint": true,
+    "read_only_hint": false
+   },
+   "description": "Læg PRÆCIS varerne fra en godkendt madplan i butikkens kurv. Ændrer kun kurven.\nBrug det KUN, når brugeren selv har godkendt: med koden (\"OK UGE-4821\") eller et kort\n\"bestil\"/\"ok\"/\"ja\", når planen er den eneste ventende. `godkendelse` er brugerens egne ord,\nordret. Er det ikke en klar godkendelse (\"ja, men uden laks\"), sker der intet.\nEn plan kan kun bruges én gang. Er kurven ikke tom, stopper den, medmindre brugeren har sagt,\nat det er i orden (`kurven_maa_have_andet=True`). Bestiller og betaler ALDRIG: brugeren\nvælger selv leveringstid og betaler i butikkens app. Vis bagefter kurven og evt. advarsler.",
+   "input_schema": {
+    "properties": {
+     "godkendelse": {
+      "title": "Godkendelse",
+      "type": "string"
+     },
+     "kode": {
+      "title": "Kode",
+      "type": "string"
+     },
+     "kurven_maa_have_andet": {
+      "default": false,
+      "title": "Kurven Maa Have Andet",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "kode",
+     "godkendelse"
+    ],
+    "title": "fyld_kurv_fra_madplanArguments",
+    "type": "object"
+   }
+  },
+  "gem_madplan": {
+   "annotations": {
+    "destructive_hint": true,
+    "idempotent_hint": false,
+    "open_world_hint": false,
+    "read_only_hint": false
+   },
+   "description": "Gem ugens madplan og den præcise indkøbsliste til godkendelse. Giver en kode (fx UGE-4821)\nog en kort `sms_tekst`. Ændrer ikke kurven.\n`butik`: nemlig, bilka eller begge (så har hver linje \"butik\").\n`retter`: fx [\"Man: Ovnbagt laks med kartofler\", \"Tir: ...\"].\n`linjer`: de varer du har valgt: [{\"vare_id\": \"5026540\", \"navn\": \"Hakket grisekød 8-12%\",\n\"antal\": 2, \"pris\": 70.0}], hvor `antal` er antal pakker og `pris` linjens samlede pris.\n`gebyrer`: alle gebyrer i kr. `valg`: ekstra valg, som madplanens forløb beskriver\n(fx {\"ugebudget_kr\": 1286}). Vis planen og sms_tekst for brugeren bagefter.",
+   "input_schema": {
+    "$defs": {
+     "NyLinje": {
+      "properties": {
+       "antal": {
+        "title": "Antal",
+        "type": "integer"
+       },
+       "butik": {
+        "title": "Butik",
+        "type": "string"
+       },
+       "navn": {
+        "title": "Navn",
+        "type": "string"
+       },
+       "pris": {
+        "title": "Pris",
+        "type": "number"
+       },
+       "vare_id": {
+        "title": "Vare Id",
+        "type": "string"
+       }
+      },
+      "required": [
+       "vare_id",
+       "navn",
+       "antal",
+       "pris"
+      ],
+      "title": "NyLinje",
+      "type": "object"
+     }
+    },
+    "properties": {
+     "butik": {
+      "title": "Butik",
+      "type": "string"
+     },
+     "gebyrer": {
+      "default": 0.0,
+      "title": "Gebyrer",
+      "type": "number"
+     },
+     "linjer": {
+      "items": {
+       "$ref": "#/$defs/NyLinje"
+      },
+      "title": "Linjer",
+      "type": "array"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Note"
+     },
+     "retter": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Retter",
+      "type": "array"
+     },
+     "valg": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Valg"
+     }
+    },
+    "required": [
+     "butik",
+     "retter",
+     "linjer"
+    ],
+    "title": "gem_madplanArguments",
+    "type": "object"
+   }
+  },
+  "gem_opskrift": {
+   "annotations": {
+    "destructive_hint": true,
+    "idempotent_hint": false,
+    "open_world_hint": false,
+    "read_only_hint": false
+   },
+   "description": "Gem en ret i jeres opskriftssamling. Findes navnet, erstattes den. Brug link til\nnemlig-opskrifter (hent_opskrift kan så give varerne). Ingredienser er fri tekst, fx\n\"500 g hakket oksekød\". Gem kun det, brugeren beder om.",
+   "input_schema": {
+    "properties": {
+     "ingredienser": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Ingredienser"
+     },
+     "link": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Link"
+     },
+     "navn": {
+      "title": "Navn",
+      "type": "string"
+     },
+     "note": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Note"
+     },
+     "personer": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Personer"
+     },
+     "tags": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Tags"
+     }
+    },
+    "required": [
+     "navn"
+    ],
+    "title": "gem_opskriftArguments",
+    "type": "object"
+   }
+  },
+  "hent_opskrift": {
+   "annotations": {
+    "open_world_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Varerne til en nemlig-opskrift (link eller id) for et antal personer, med pris.\nVarer markeret har_hjemme (salt, olie osv.) er ikke med i prisen.",
+   "input_schema": {
+    "properties": {
+     "opskrift": {
+      "title": "Opskrift",
+      "type": "string"
+     },
+     "personer": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Personer"
+     }
+    },
+    "required": [
+     "opskrift"
+    ],
+    "title": "hent_opskriftArguments",
+    "type": "object"
+   }
+  },
+  "hent_opskrift_fra_link": {
+   "annotations": {
+    "open_world_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Hent en opskrift fra et link på husstandens opskriftssider: Valdemarsro, Arla, DR Mad,\nMadens Verden, HelloFresh og Årstiderne. Giver navn, antal personer, tid og ingredienser med\nmængder. Find linket med websøgning på de sider. Gem retter, de kan lide, med gem_opskrift.",
+   "input_schema": {
+    "properties": {
+     "link": {
+      "title": "Link",
+      "type": "string"
+     }
+    },
+    "required": [
+     "link"
+    ],
+    "title": "hent_opskrift_fra_linkArguments",
+    "type": "object"
+   }
+  },
+  "koebsmoenster": {
+   "annotations": {
+    "open_world_hint": false,
+    "read_only_hint": true
+   },
+   "description": "Hvad husstanden faktisk køber, ud fra gemte kvitteringer (i dag fra Coop/Brugsen):\nbasisvarer med typisk interval og dage siden sidst (`snart_tom`), favoritter pr. madkategori,\nhvad pengene går til, øko-andel og forbrug pr. uge. `andel_af_indkoeb` er hvor stor en del af\nindkøbene kvitteringerne dækker (se profilens note, fx 0.7), så det samlede budget kan skønnes.\nBrug det til madplaner (retter med det, de kan lide), til at foreslå basisvarer der snart er\ntomme, og til at sammenligne ugebudgettet med det faktiske forbrug.",
+   "input_schema": {
+    "properties": {
+     "andel_af_indkoeb": {
+      "default": 1.0,
+      "title": "Andel Af Indkoeb",
+      "type": "number"
+     }
+    },
+    "title": "koebsmoensterArguments",
+    "type": "object"
+   }
+  },
+  "leveringstider": {
+   "annotations": {
+    "open_world_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Ledige leveringstider med pris. Kun til orientering: brugeren vælger selv tiden.",
+   "input_schema": {
+    "properties": {
+     "butik": {
+      "default": "nemlig",
+      "title": "Butik",
+      "type": "string"
+     },
+     "dage": {
+      "default": 5,
+      "title": "Dage",
+      "type": "integer"
+     }
+    },
+    "title": "leveringstiderArguments",
+    "type": "object"
+   }
+  },
+  "opdater_beholdning": {
+   "annotations": {
+    "destructive_hint": true,
+    "idempotent_hint": false,
+    "open_world_hint": false,
+    "read_only_hint": false
+   },
+   "description": "Gem hvad I har hjemme. Ændrer kun en lokal liste, aldrig butikkernes kurv.\n`tilfoej`: [{\"navn\": \"løg\", \"maengde\": \"2 stk\", \"sted\": \"køleskab\"}]. Findes navnet, rettes det.\n`fjern`: navne på varer der er brugt op.\n`erstat_alt=True`: listen er hele beholdningen (fx efter et kig i køleskabet), og alt andet slettes.\nSpørg, hvis det er uklart om noget er brugt op, og vis bagefter den nye beholdning.",
+   "input_schema": {
+    "$defs": {
+     "NyVare": {
+      "properties": {
+       "maengde": {
+        "title": "Maengde",
+        "type": "string"
+       },
+       "navn": {
+        "title": "Navn",
+        "type": "string"
+       },
+       "sted": {
+        "title": "Sted",
+        "type": "string"
+       }
+      },
+      "required": [
+       "navn"
+      ],
+      "title": "NyVare",
+      "type": "object"
+     }
+    },
+    "properties": {
+     "erstat_alt": {
+      "default": false,
+      "title": "Erstat Alt",
+      "type": "boolean"
+     },
+     "fjern": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Fjern"
+     },
+     "tilfoej": {
+      "anyOf": [
+       {
+        "items": {
+         "$ref": "#/$defs/NyVare"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Tilfoej"
+     }
+    },
+    "title": "opdater_beholdningArguments",
+    "type": "object"
+   }
+  },
+  "opdater_profil": {
+   "annotations": {
+    "destructive_hint": true,
+    "idempotent_hint": false,
+    "open_world_hint": false,
+    "read_only_hint": false
+   },
+   "description": "Ret husstandens profil. `aendringer` er kun de felter, der skal ændres, fx\n{\"ugebudget_kr\": 1500} eller {\"varepraeferencer\": [...], \"fra_husstanden\": []}. De mulige\nfelter står under `felter` i vis_profil. Lister erstattes helt, så send hele den nye liste.\nBrug den, når husstanden siger, at noget skal huskes til fremover.",
+   "input_schema": {
+    "properties": {
+     "aendringer": {
+      "additionalProperties": true,
+      "title": "Aendringer",
+      "type": "object"
+     }
+    },
+    "required": [
+     "aendringer"
+    ],
+    "title": "opdater_profilArguments",
+    "type": "object"
+   }
+  },
+  "saet_antal_i_kurv": {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "open_world_hint": true,
+    "read_only_hint": false
+   },
+   "description": "Sæt antal af varer i kurven: {\"varenummer\": antal}. Antallet er det samlede antal\n(ikke et tillæg), og 0 fjerner varen. Ændrer KUN kurven. Spørg brugeren først.",
+   "input_schema": {
+    "properties": {
+     "antal": {
+      "additionalProperties": {
+       "type": "integer"
+      },
+      "title": "Antal",
+      "type": "object"
+     },
+     "butik": {
+      "title": "Butik",
+      "type": "string"
+     }
+    },
+    "required": [
+     "butik",
+     "antal"
+    ],
+    "title": "saet_antal_i_kurvArguments",
+    "type": "object"
+   }
+  },
+  "sammenlign_liste": {
+   "annotations": {
+    "open_world_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Prissæt en indkøbsliste i flere butikker, med gebyrer, og find den billigste.\n`varer` er fx [\"500 g hakket oksekød\", \"1 l letmælk\", \"2 stk løg\", \"pasta\"]. Skriv mængden\nmed, når du kender den: så vælges de pakker, der dækker behovet billigst, i stedet for den\nlaveste kg-pris (som kan være en alt for stor pakke). `antal` ganger hele linjen (standard 1).\n`oekologisk=True` lader økovarer koste op til 50 % mere og stadig blive valgt.\nHver linje har op til 4 alternativer. Valget er kun et forslag ud fra pris og ord: GÅ\nALTERNATIVERNE IGENNEM og vælg selv ud fra kvalitet (rå vare frem for færdigret, ikke\nultraforarbejdet, rigtig vare frem for smagsvariant, profilens præferencer). Usikre linjer\nskal altid tjekkes, evt. med en bedre søgetekst, før kurven fyldes.\n`anbefaling` siger, hvor det samlet er billigst med levering, pakning og minimumskøb: én\nbutik, eller begge, når det kan betale sig. Følg den, medmindre kvaliteten taler imod.",
+   "input_schema": {
+    "properties": {
+     "antal": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "integer"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Antal"
+     },
+     "butikker": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Butikker"
+     },
+     "oekologisk": {
+      "default": false,
+      "title": "Oekologisk",
+      "type": "boolean"
+     },
+     "varer": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Varer",
+      "type": "array"
+     }
+    },
+    "required": [
+     "varer"
+    ],
+    "title": "sammenlign_listeArguments",
+    "type": "object"
+   }
+  },
+  "send_besked": {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "open_world_hint": true,
+    "read_only_hint": false
+   },
+   "description": "Send en besked til husstandens telefoner via jeres Telegram-bot (kun tilkoblede telefoner).\nBrug den til ugeplanen: spørgsmålet om køleskabet, og planens sms_tekst til godkendelse.\nSend ikke andet, og ikke flere gange end nødvendigt. Højst 4000 tegn.",
+   "input_schema": {
+    "properties": {
+     "tekst": {
+      "title": "Tekst",
+      "type": "string"
+     }
+    },
+    "required": [
+     "tekst"
+    ],
+    "title": "send_beskedArguments",
+    "type": "object"
+   }
+  },
+  "soeg_opskrifter": {
+   "annotations": {
+    "open_world_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Søg i nemligs opskrifter. Giver navn og link. Brug hent_opskrift for varer og pris.",
+   "input_schema": {
+    "properties": {
+     "antal": {
+      "default": 5,
+      "title": "Antal",
+      "type": "integer"
+     },
+     "tekst": {
+      "title": "Tekst",
+      "type": "string"
+     }
+    },
+    "required": [
+     "tekst"
+    ],
+    "title": "soeg_opskrifterArguments",
+    "type": "object"
+   }
+  },
+  "soeg_varer": {
+   "annotations": {
+    "open_world_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Søg efter varer i én butik (nemlig eller bilka). Giver pris, enhedspris, tilbud og lager.\nButikken sorterer efter popularitet, så de billigste varer er tit ikke i toppen. Sæt\n`billigst_foerst=True` for at gennemsøge flere hits og ugens tilbud og få de relevante varer\npå lager sorteret efter det billigste køb. Står der en mængde i teksten (\"500 g hakket\noksekød\"), sorteres efter prisen for at dække den. Brug det, når prisen betyder noget, og\nprøv flere søgetekster (fx \"kyllingebryst øko\", \"kyllingeinderfilet\"), før du vælger.",
+   "input_schema": {
+    "properties": {
+     "antal": {
+      "default": 10,
+      "title": "Antal",
+      "type": "integer"
+     },
+     "billigst_foerst": {
+      "default": false,
+      "title": "Billigst Foerst",
+      "type": "boolean"
+     },
+     "butik": {
+      "default": "nemlig",
+      "title": "Butik",
+      "type": "string"
+     },
+     "oekologisk": {
+      "default": false,
+      "title": "Oekologisk",
+      "type": "boolean"
+     },
+     "tekst": {
+      "title": "Tekst",
+      "type": "string"
+     }
+    },
+    "required": [
+     "tekst"
+    ],
+    "title": "soeg_varerArguments",
+    "type": "object"
+   }
+  },
+  "tidligere_ordrer": {
+   "annotations": {
+    "open_world_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Tidligere ordrer. Med ordre_id: varerne i den ordre (godt til 'det vi plejer at købe').",
+   "input_schema": {
+    "properties": {
+     "antal": {
+      "default": 10,
+      "title": "Antal",
+      "type": "integer"
+     },
+     "butik": {
+      "default": "nemlig",
+      "title": "Butik",
+      "type": "string"
+     },
+     "ordre_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Ordre Id"
+     }
+    },
+    "title": "tidligere_ordrerArguments",
+    "type": "object"
+   }
+  },
+  "ugens_tilbud": {
+   "annotations": {
+    "open_world_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Ugens tilbud i én butik. nemlig: Skarp pris, Priskup, Dagstilbud og Undgå madspild.",
+   "input_schema": {
+    "properties": {
+     "antal": {
+      "default": 25,
+      "title": "Antal",
+      "type": "integer"
+     },
+     "butik": {
+      "default": "nemlig",
+      "title": "Butik",
+      "type": "string"
+     }
+    },
+    "title": "ugens_tilbudArguments",
+    "type": "object"
+   }
+  },
+  "ugeplan_forloeb": {
+   "annotations": {
+    "destructive_hint": false,
+    "idempotent_hint": true,
+    "open_world_hint": true,
+    "read_only_hint": false
+   },
+   "description": "KALD DENNE FØRST, når brugeren beder om en madplan eller ugens indkøb af mad (fx \"lav\nmadplan\"). Er Telegram sat op, sender den selv det første spørgsmål til husstanden på\nTelegram. Giver det faste forløb trin for trin: køleskab, menu med prisskøn, pris i den\nbilligste butik eller fordeling, og \"bestil\". Følg det præcist.",
+   "input_schema": {
+    "properties": {},
+    "title": "ugeplan_forloebArguments",
+    "type": "object"
+   }
+  },
+  "vent_paa_svar": {
+   "annotations": {
+    "open_world_hint": false,
+    "read_only_hint": true
+   },
+   "description": "Vent på svar fra husstanden på Telegram (højst 55 sekunder pr. kald). Giver de nye svar,\neller {\"ingen_svar_endnu\": true}. Kald den igen, mens I venter. Svar fra \"handle-botten\"\nfortæller, at kurven er fyldt efter et \"bestil\" (eller hvorfor den ikke blev det).",
+   "input_schema": {
+    "properties": {
+     "sekunder": {
+      "default": 50,
+      "title": "Sekunder",
+      "type": "integer"
+     }
+    },
+    "title": "vent_paa_svarArguments",
+    "type": "object"
+   }
+  },
+  "vis_beholdning": {
+   "annotations": {
+    "open_world_hint": false,
+    "read_only_hint": true
+   },
+   "description": "Det I har hjemme (køleskab, fryser, skab), som I sidst har fortalt det.\n`noteret` er hvornår hver vare sidst blev opdateret: gamle varer kan være brugt eller for gamle.\nBrug den til madplaner og indkøbslister, så I ikke køber det, I allerede har.",
+   "input_schema": {
+    "properties": {},
+    "title": "vis_beholdningArguments",
+    "type": "object"
+   }
+  },
+  "vis_beskeder": {
+   "annotations": {
+    "open_world_hint": false,
+    "read_only_hint": true
+   },
+   "description": "Svar fra husstanden via Telegram (fx hvad der er i køleskabet), nyeste sidst. Markerer dem\nsom læst. \"OK UGE-xxxx\" står ikke her: dem klarer lytteren selv ved at fylde kurven.",
+   "input_schema": {
+    "properties": {
+     "kun_nye": {
+      "default": true,
+      "title": "Kun Nye",
+      "type": "boolean"
+     }
+    },
+    "title": "vis_beskederArguments",
+    "type": "object"
+   }
+  },
+  "vis_kurv": {
+   "annotations": {
+    "open_world_hint": true,
+    "read_only_hint": true
+   },
+   "description": "Kurvens linjer, gebyrer, total, minimumskøb og valgt leveringstid.",
+   "input_schema": {
+    "properties": {
+     "butik": {
+      "default": "nemlig",
+      "title": "Butik",
+      "type": "string"
+     }
+    },
+    "title": "vis_kurvArguments",
+    "type": "object"
+   }
+  },
+  "vis_madplan": {
+   "annotations": {
+    "open_world_hint": false,
+    "read_only_hint": true
+   },
+   "description": "En gemt madplan med varer, pris, status og sms_tekst. Uden kode: den nyeste.",
+   "input_schema": {
+    "properties": {
+     "kode": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Kode"
+     }
+    },
+    "title": "vis_madplanArguments",
+    "type": "object"
+   }
+  },
+  "vis_opskrifter": {
+   "annotations": {
+    "open_world_hint": false,
+    "read_only_hint": true
+   },
+   "description": "Jeres egen opskriftssamling: retter I kender og stoler på. Vælg retter herfra til\nmadplaner, før du foreslår nye. `tag` fx \"hverdag\" eller \"vegetar\", `soeg` et ord i navn,\ningredienser eller note.",
+   "input_schema": {
+    "properties": {
+     "soeg": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Soeg"
+     },
+     "tag": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "default": null,
+      "title": "Tag"
+     }
+    },
+    "title": "vis_opskrifterArguments",
+    "type": "object"
+   }
+  },
+  "vis_profil": {
+   "annotations": {
+    "open_world_hint": false,
+    "read_only_hint": true
+   },
+   "description": "Husstandens profil (personer, ugebudget, præferencer, ønsker til varer og måltider m.m.).\n`felter` i svaret forklarer hvert felt. Alle felter gælder. Læs den, før du laver madplan\neller indkøbsliste.",
+   "input_schema": {
+    "properties": {},
+    "title": "vis_profilArguments",
+    "type": "object"
+   }
+  }
+ }
+}

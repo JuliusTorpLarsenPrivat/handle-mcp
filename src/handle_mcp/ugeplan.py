@@ -25,7 +25,7 @@ UGENS BUDGET (regn det ud, før du laver menuen)
 - Profilens ugebudget_kr er for en hel uge (7 dage) til profilens antal personer.
 - Færre dage: skalér ned (6 af 7 dage → budget × 6/7). Gæster: skalér op efter antal ekstra
   måltider (2 gæster til 1 aftensmad hos 2 personer ≈ + 2 aftensmåltider). Skriv kort, hvordan
-  du regnede, og send ugens budget som ugebudget_kr til gem_madplan.
+  du regnede, og send ugens budget til gem_madplan som valg={"ugebudget_kr": …}.
 - Sig altid tydeligt, hvad du sammenligner med: "ugens budget" (ovenstående) eller "normalt
   forbrug" (det vi plejer at bruge ifølge koebsmoenster). De to tal er ikke det samme.
 
@@ -53,7 +53,7 @@ TRIN 3: PRISEN
 8. Følg `anbefaling` fra sammenlign_liste: én butik, eller begge, når det samlet er billigst med
    levering, poser, pakning og minimumskøb. Del aldrig for en lille besparelse, som gebyrerne
    æder. Er totalen over ugens budget, så find konkrete billigere udskiftninger og nævn dem.
-9. Gem med gem_madplan (gebyrer = alle gebyrer inkl. poser, ugebudget_kr = ugens budget). Ved
+9. Gem med gem_madplan (gebyrer = alle gebyrer inkl. poser, valg={"ugebudget_kr": ugens budget}). Ved
    deling: butik="begge" og "butik" på hver vare. Send: butik(ker), total inkl. levering og
    poser mod ugens budget, antal varer, de 3-5 vigtigste valg kort, evt. budgetadvarsel, og
    "Skriv bestil, eller ret noget".

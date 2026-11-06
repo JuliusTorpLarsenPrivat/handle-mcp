@@ -148,15 +148,15 @@ async def test_advarsel_ved_prisstigning(monkeypatch):
 
 
 async def test_advarsel_over_budget(butik):
-    await server.opdater_profil(ugebudget_kr=100)
+    await server.opdater_profil({"ugebudget_kr": 100})
     gemt = await server.gem_madplan("nemlig", ["Man: Laks"], LINJER, gebyrer=36)
     assert "over ugens budget på 100 kr" in gemt["advarsel"]
 
 
 async def test_ugens_budget_kan_justeres(butik):
     """Fundet i brug: færre dage eller gæster ændrer budgettet for den uge, ikke profilen."""
-    await server.opdater_profil(ugebudget_kr=100)
-    gemt = await server.gem_madplan("nemlig", ["Man: Laks"], LINJER, gebyrer=36, ugebudget_kr=5000)
+    await server.opdater_profil({"ugebudget_kr": 100})
+    gemt = await server.gem_madplan("nemlig", ["Man: Laks"], LINJER, gebyrer=36, valg={"ugebudget_kr": 5000})
     assert gemt["advarsel"] is None and gemt["ugens_budget"] == 5000
     assert (await server.vis_profil())["ugebudget_kr"] == 100  # profilen er urørt
 
@@ -235,3 +235,8 @@ async def test_prompten_har_ingen_felter():
     """Fundet live: Claude Desktop viser en boks for hvert felt, også valgfrie. Maja skal svare på Telegram."""
     (prompt,) = await server.mcp.list_prompts()
     assert not prompt.arguments
+
+
+async def test_ukendt_valg_til_gem_madplan(butik):
+    with pytest.raises(ToolError, match="Ukendte valg: farve"):
+        await server.gem_madplan("nemlig", ["Man: Laks"], LINJER, valg={"farve": 1})

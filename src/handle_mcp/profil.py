@@ -54,6 +54,32 @@ def husk_fra_husstanden(fra: str, tekst: str) -> None:
         skriv("profil", asdict(p))
 
 
+# Felterne, som Claude kan rette med opdater_profil({"felt": værdi}). Står her og ikke i
+# værktøjets felter i server.py, så nye felter ikke kræver, at Claude Desktop genstartes.
+FELTER = {
+    "personer": "antal personer i husstanden (1-20)",
+    "ugebudget_kr": "budget for en hel uge (7 dage) inkl. levering og poser; 0 fjerner det",
+    "praeferencer": "liste: madstil, fx 'proteinrigt', 'hurtigt på hverdage'",
+    "undgaa": "liste: allergier og det, I ikke kan lide",
+    "note": "fri tekst",
+    "faste_maaltider": "liste: måltider, der er de samme hver uge og skal med i indkøb og pris",
+    "varepraeferencer": "liste: krav til bestemte varer, fx 'Mørk chokolade: mindst 85 %'",
+    "fra_husstanden": "liste: ønsker, botten har gemt fra Telegram; send [] når de er flyttet",
+}
+
+
+def vis() -> dict:
+    return {**asdict(hent()), "felter": FELTER}
+
+
+def opdater_fra_dict(aendringer: dict) -> Profil:
+    if not isinstance(aendringer, dict) or not aendringer:
+        raise LokalFejl('Send de felter, der skal ændres, fx {"ugebudget_kr": 1500}.')
+    if ukendte := sorted(set(aendringer) - set(FELTER)):
+        raise LokalFejl(f"Ukendte felter: {', '.join(ukendte)}. Mulige felter: {', '.join(FELTER)}.")
+    return opdater(**aendringer)
+
+
 def hent() -> Profil:
     data = laes("profil")
     kendte = Profil.__dataclass_fields__

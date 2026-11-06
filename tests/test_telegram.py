@@ -335,7 +335,7 @@ async def test_samme_oenske_gemmes_kun_en_gang_og_kan_ryddes(tg):
     await telegram.hent_og_haandter(0)
     assert len(profil.hent().fra_husstanden) == 1
     # Claude flytter ønsket til det rette felt og rydder op i samme kald
-    await server.opdater_profil(varepraeferencer=["Mørk chokolade: mindst 85 %"], fra_husstanden=[])
+    await server.opdater_profil({"varepraeferencer": ["Mørk chokolade: mindst 85 %"], "fra_husstanden": []})
     p = profil.hent()
     assert p.fra_husstanden == [] and p.varepraeferencer == ["Mørk chokolade: mindst 85 %"]
 

@@ -216,3 +216,35 @@ def sms_tekst(p: Madplan) -> str:
         f"{len(p.linjer)} {'vare' if len(p.linjer) == 1 else 'varer'}, i alt {p.i_alt:.0f} kr inkl. levering.\n"
         f"Svar \"bestil\" for at lægge varerne i kurven (betal selv i appen bagefter)."
     )
+
+
+# --- svar til værktøjerne ----------------------------------------------------------
+# Ligger her og ikke i server.py, så det kan rettes uden at genstarte Claude Desktop.
+
+VALG = {
+    "ugebudget_kr": "denne uges budget, når det er justeret fra profilens (færre dage, gæster)",
+}
+
+
+def svar(p: Madplan, **ekstra) -> dict:
+    from handle_mcp.data import til_json
+
+    return {**til_json(p), "varer_i_alt": p.varer_i_alt, "i_alt": p.i_alt, "sms_tekst": sms_tekst(p), **ekstra}
+
+
+def gem_fra_vaerktoej(
+    butik: str, retter: list[str], linjer: list[NyLinje], gebyrer: float = 0.0, note: str | None = None, valg: dict | None = None
+) -> dict:
+    """gem_madplan: gem planen og giv svaret med budgetadvarsel."""
+    from handle_mcp import profil
+
+    valg = dict(valg or {})
+    if ukendte := sorted(set(valg) - set(VALG)):
+        raise LokalFejl(f"Ukendte valg: {', '.join(ukendte)}. Mulige: " + "; ".join(f"{k}: {v}" for k, v in VALG.items()))
+    budget = valg.get("ugebudget_kr")
+    if budget is not None and not (isinstance(budget, (int, float)) and 0 < budget <= 20000):
+        raise LokalFejl("ugebudget_kr skal være et tal mellem 0 og 20.000.")
+    p = gem(butik, retter, linjer, gebyrer, note)
+    budget = budget or profil.hent().ugebudget_kr
+    advarsel = f"Planen koster {p.i_alt:.0f} kr, over ugens budget på {budget:.0f} kr." if budget and p.i_alt > budget else None
+    return svar(p, advarsel=advarsel, ugens_budget=budget)

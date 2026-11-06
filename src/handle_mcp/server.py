@@ -269,34 +269,19 @@ async def koebsmoenster(andel_af_indkoeb: float = 1.0) -> Any:
 
 @vaerktoej(LOKAL_LAESER)
 async def vis_profil() -> Any:
-    """Husstandens profil: antal personer, ugebudget (kr. for en hel uge, inkl. levering),
-    præferencer, ting at undgå (allergier, det I ikke kan lide), faste måltider (fx morgenmad
-    hver dag, som skal med på listen og i prisen) og vareønsker (krav til bestemte varer, fx
-    "Mørk chokolade: mindst 85 %"). `fra_husstanden` er ønsker, de har sendt på Telegram, som
-    endnu ikke er flyttet til det rette felt: de gælder lige så meget. Læs den, før du laver
-    madplan eller indkøbsliste."""
-    return _lokalt(profil.hent)
+    """Husstandens profil (personer, ugebudget, præferencer, ønsker til varer og måltider m.m.).
+    `felter` i svaret forklarer hvert felt. Alle felter gælder. Læs den, før du laver madplan
+    eller indkøbsliste."""
+    return _lokalt(profil.vis)
 
 
 @vaerktoej(LOKAL_SKRIVER)
-async def opdater_profil(
-    personer: int | None = None,
-    ugebudget_kr: float | None = None,
-    praeferencer: list[str] | None = None,
-    undgaa: list[str] | None = None,
-    note: str | None = None,
-    faste_maaltider: list[str] | None = None,
-    varepraeferencer: list[str] | None = None,
-    fra_husstanden: list[str] | None = None,
-) -> Any:
-    """Ret husstandens profil. Kun de felter du sender, ændres. Lister erstattes helt, så send
-    hele den nye liste (læs vis_profil først). ugebudget_kr=0 fjerner budgettet.
-    Brug den også, når husstanden siger, at noget skal huskes til fremover (fx "chokoladen skal
-    være mørkere" → vareønske). `fra_husstanden` er ønsker, Telegram-botten selv har gemt:
-    flyt dem til det rette felt og send fra_husstanden=[] i samme kald."""
-    return _lokalt(
-        profil.opdater, personer, ugebudget_kr, praeferencer, undgaa, note, faste_maaltider, varepraeferencer, fra_husstanden
-    )
+async def opdater_profil(aendringer: dict[str, Any]) -> Any:
+    """Ret husstandens profil. `aendringer` er kun de felter, der skal ændres, fx
+    {"ugebudget_kr": 1500} eller {"varepraeferencer": [...], "fra_husstanden": []}. De mulige
+    felter står under `felter` i vis_profil. Lister erstattes helt, så send hele den nye liste.
+    Brug den, når husstanden siger, at noget skal huskes til fremover."""
+    return _lokalt(profil.opdater_fra_dict, aendringer)
 
 
 @vaerktoej(LOKAL_LAESER)
@@ -395,11 +380,6 @@ async def vis_beskeder(kun_nye: bool = True) -> Any:
         raise ToolError(str(fejl)) from None
 
 
-def _plan_svar(p: madplan.Madplan, **ekstra: Any) -> dict:
-    d = data.til_json(p)
-    return {**d, "varer_i_alt": p.varer_i_alt, "i_alt": p.i_alt, "sms_tekst": madplan.sms_tekst(p), **ekstra}
-
-
 @vaerktoej(LOKAL_SKRIVER)
 async def gem_madplan(
     butik: str,
@@ -407,31 +387,24 @@ async def gem_madplan(
     linjer: list[madplan.NyLinje],
     gebyrer: float = 0.0,
     note: str | None = None,
-    ugebudget_kr: float | None = None,
+    valg: dict[str, Any] | None = None,
 ) -> Any:
     """Gem ugens madplan og den præcise indkøbsliste til godkendelse. Giver en kode (fx UGE-4821)
-    og en kort `sms_tekst`, som brugeren kan sende til sin partner. Ændrer ikke kurven.
-    `butik`: nemlig eller bilka (den I har valgt efter sammenligningen).
+    og en kort `sms_tekst`. Ændrer ikke kurven.
+    `butik`: nemlig, bilka eller begge (så har hver linje "butik").
     `retter`: fx ["Man: Ovnbagt laks med kartofler", "Tir: ..."].
     `linjer`: de varer du har valgt: [{"vare_id": "5026540", "navn": "Hakket grisekød 8-12%",
     "antal": 2, "pris": 70.0}], hvor `antal` er antal pakker og `pris` linjens samlede pris.
-    `gebyrer`: levering, poser og pakning i kr.
-    `ugebudget_kr`: denne uges budget, hvis det er justeret fra profilens (færre dage, gæster).
-    Vis planen og sms_tekst for brugeren bagefter."""
-    try:
-        p = madplan.gem(butik, retter, linjer, gebyrer, note)
-        budget = ugebudget_kr if ugebudget_kr else profil.hent().ugebudget_kr
-    except lokal.LokalFejl as fejl:
-        raise ToolError(str(fejl)) from None
-    advarsel = f"Planen koster {p.i_alt:.0f} kr, over ugens budget på {budget:.0f} kr." if budget and p.i_alt > budget else None
-    return _plan_svar(p, advarsel=advarsel, ugens_budget=budget)
+    `gebyrer`: alle gebyrer i kr. `valg`: ekstra valg, som madplanens forløb beskriver
+    (fx {"ugebudget_kr": 1286}). Vis planen og sms_tekst for brugeren bagefter."""
+    return _lokalt(madplan.gem_fra_vaerktoej, butik, retter, linjer, gebyrer, note, valg)
 
 
 @vaerktoej(LOKAL_LAESER)
 async def vis_madplan(kode: str | None = None) -> Any:
     """En gemt madplan med varer, pris, status og sms_tekst. Uden kode: den nyeste."""
     try:
-        return _plan_svar(madplan.hent(kode))
+        return madplan.svar(madplan.hent(kode))
     except lokal.LokalFejl as fejl:
         raise ToolError(str(fejl)) from None
 
