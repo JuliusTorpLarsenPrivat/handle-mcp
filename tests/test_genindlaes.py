@@ -1,6 +1,7 @@
 """Ny kode uden genstart: genindlaes.py. Testes på en lille pakke i en midlertidig mappe,
 så de rigtige moduler ikke skiftes ud midt i testkørslen."""
 
+import importlib
 import os
 import sys
 import time
@@ -57,6 +58,9 @@ def test_foerste_indlaesning_er_ikke_en_aendring(pakke, monkeypatch):
     (pakke / "c.py").write_text("X = 1\n", encoding="utf-8")
     monkeypatch.setattr(genindlaes, "RAEKKEFOLGE", ("gentest.a", "gentest.b", "gentest.c"))
     genindlaes.start()  # c er ikke indlæst endnu
+    # Pythons import-cache kan have mappens indhold fra før c.py blev skrevet (samme tidsstempel
+    # på mappen), så importen af og til ikke fandt filen. Fundet som ustabil test i v0.16.0.
+    importlib.invalidate_caches()
     import gentest.c  # noqa: F401  nu bliver den brugt for første gang
 
     try:
