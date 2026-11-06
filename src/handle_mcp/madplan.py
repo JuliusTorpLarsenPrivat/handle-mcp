@@ -1,0 +1,173 @@
+"""Ugeplanen: madplan + præcis indkøbsliste, gemt med en kode, som I godkender.
+
+Forløbet (startes manuelt, indtil mini-pc'en kan gøre det automatisk):
+  1. Claude laver madplan og vælger varer, og gemmer det med gem_madplan → fx "UGE-4821".
+  2. Planen sendes til godkendelse (SMS-tekst, som I selv sender, indtil videre).
+  3. Ved "OK UGE-4821" fylder fyld_kurv_fra_madplan kurven med præcis de godkendte varer.
+  4. I betaler selv i butikkens app. Automatisk betaling kommer tidligst, når vi har set en
+     rigtig betaling og ved, at den kan laves sikkert (se IDEER.md).
+
+Planerne ligger i madplaner.json på din egen maskine (se lokal.py).
+"""
+
+from __future__ import annotations
+
+import re
+import secrets
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
+from decimal import Decimal
+from typing import TypedDict
+from zoneinfo import ZoneInfo
+
+from handle_mcp.lokal import LokalFejl, laes, skriv, tekst, tekster
+
+TIDSZONE = ZoneInfo("Europe/Copenhagen")
+GEMTE = 20  # de seneste planer gemmes
+MAKS_LINJER = 80
+MAKS_ANTAL = 20
+PRISSTIGNING = Decimal("0.05")  # mere end 5 % dyrere i kurven end i planen = stop og spørg
+STATUSSER = ("afventer", "kurv fyldt", "annulleret")
+
+
+class NyLinje(TypedDict):
+    vare_id: str
+    navn: str
+    antal: int
+    pris: float  # samlet pris for linjen i planen (med mængderabat)
+
+
+@dataclass
+class Linje:
+    vare_id: str
+    navn: str
+    antal: int
+    pris: float
+
+
+@dataclass
+class Madplan:
+    kode: str
+    butik: str
+    oprettet: str
+    retter: list[str]
+    linjer: list[Linje]
+    gebyrer: float = 0.0
+    note: str | None = None
+    status: str = "afventer"
+    historik: list[str] = field(default_factory=list)
+
+    @property
+    def varer_i_alt(self) -> float:
+        return round(sum(ln.pris for ln in self.linjer), 2)
+
+    @property
+    def i_alt(self) -> float:
+        return round(self.varer_i_alt + self.gebyrer, 2)
+
+
+def _nu() -> str:
+    return datetime.now(TIDSZONE).isoformat(timespec="minutes")
+
+
+def _alle() -> list[Madplan]:
+    ud = []
+    for d in laes("madplaner").get("planer", []):
+        d = {**d, "linjer": [Linje(**ln) for ln in d["linjer"]]}
+        ud.append(Madplan(**d))
+    return ud
+
+
+def _gem_alle(planer: list[Madplan]) -> None:
+    skriv("madplaner", {"planer": [asdict(p) for p in planer[-GEMTE:]]})
+
+
+def gem(butik: str, retter: list[str], linjer: list[NyLinje], gebyrer: float = 0.0, note: str | None = None) -> Madplan:
+    butik = (tekst(butik, "butik") or "").lower()
+    if butik not in ("nemlig", "bilka"):
+        raise LokalFejl("Butikken skal være nemlig eller bilka.")
+    if not linjer:
+        raise LokalFejl("Planen har ingen varer.")
+    if len(linjer) > MAKS_LINJER:
+        raise LokalFejl(f"Højst {MAKS_LINJER} varer i en plan.")
+    rene = []
+    set_ids = set()
+    for ln in linjer:
+        vare_id = tekst(ln.get("vare_id"), "vare_id", 40)
+        navn = tekst(ln.get("navn"), "navn", 120)
+        antal, pris = ln.get("antal"), ln.get("pris")
+        if not vare_id or not navn:
+            raise LokalFejl("Hver vare skal have vare_id og navn (fra søgningen).")
+        if not isinstance(antal, int) or not 1 <= antal <= MAKS_ANTAL:
+            raise LokalFejl(f"Antal for {navn} skal være et heltal mellem 1 og {MAKS_ANTAL}.")
+        if not isinstance(pris, (int, float)) or pris < 0:
+            raise LokalFejl(f"Prisen for {navn} mangler eller er negativ.")
+        if vare_id in set_ids:
+            raise LokalFejl(f"{navn} står to gange: læg antallene sammen i én linje.")
+        set_ids.add(vare_id)
+        rene.append(Linje(vare_id, navn, antal, round(float(pris), 2)))
+    planer = _alle()
+    brugte = {p.kode for p in planer}
+    while (kode := f"UGE-{secrets.randbelow(9000) + 1000}") in brugte:
+        pass
+    plan = Madplan(
+        kode=kode,
+        butik=butik,
+        oprettet=_nu(),
+        retter=tekster(retter, "retter", 14, 120),
+        linjer=rene,
+        gebyrer=round(float(gebyrer or 0), 2),
+        note=tekst(note, "note", 500),
+        historik=[f"{_nu()} oprettet"],
+    )
+    _gem_alle(planer + [plan])
+    return plan
+
+
+def hent(kode: str | None = None) -> Madplan:
+    planer = _alle()
+    if not planer:
+        raise LokalFejl("Der er ingen gemte madplaner.")
+    if kode is None:
+        return planer[-1]
+    kode = kode.strip().upper()
+    for p in planer:
+        if p.kode == kode:
+            return p
+    raise LokalFejl(f"Der er ingen madplan med koden {kode}.")
+
+
+def saet_status(kode: str, status: str, besked: str) -> Madplan:
+    if status not in STATUSSER:
+        raise LokalFejl(f"Ukendt status: {status}")
+    planer = _alle()
+    for p in planer:
+        if p.kode == kode:
+            p.status = status
+            p.historik.append(f"{_nu()} {besked}")
+            _gem_alle(planer)
+            return p
+    raise LokalFejl(f"Der er ingen madplan med koden {kode}.")
+
+
+KODE_I_TEKST = re.compile(r"UGE[\s-]*(\d{4})\b")
+JA_ORD = re.compile(r"\b(OK|OKAY|JA|GODKEND|GODKENDT|GODKENDER)\b")
+
+
+def er_godkendt(kode: str, svar: str) -> bool:
+    """Har brugeren godkendt netop denne plan? Svaret skal både sige ja (OK, ja, godkend) og
+    nævne planens kode: "OK UGE-4821", "ok uge 4821", "Ja, godkend UGE4821"."""
+    s = svar.upper()
+    koder = {f"UGE-{m}" for m in KODE_I_TEKST.findall(s)}
+    return bool(JA_ORD.search(s)) and koder == {kode}
+
+
+def sms_tekst(p: Madplan) -> str:
+    """Kort tekst til godkendelse, fx på SMS. Under 600 tegn, så den kan læses på en telefon."""
+    butik = {"nemlig": "nemlig.com", "bilka": "BilkaToGo"}[p.butik]
+    retter = "\n".join(f"- {r}" for r in p.retter) or "- (ingen retter angivet)"
+    return (
+        f"Ugeplan {p.kode} ({butik})\n{retter}\n"
+        f"{len(p.linjer)} {'vare' if len(p.linjer) == 1 else 'varer'}, i alt {p.i_alt:.0f} kr inkl. levering.\n"
+        f"Svar \"OK {p.kode}\" for at lægge varerne i kurven."
+    )

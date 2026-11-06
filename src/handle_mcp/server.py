@@ -11,13 +11,14 @@ from __future__ import annotations
 
 import logging
 import sys
+from decimal import Decimal
 from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import ToolAnnotations
 
-from handle_mcp import beholdning, historik, login, profil, samling
+from handle_mcp import beholdning, historik, login, madplan, profil, samling
 from handle_mcp.butikker import ButikFejl, hent_butik
 from handle_mcp.data import til_json
 from handle_mcp.lokal import LokalFejl
@@ -283,6 +284,115 @@ async def fjern_opskrift(navn: str) -> Any:
     if not _lokalt(samling.fjern, navn):
         raise ToolError(f"Der er ingen opskrift, der hedder {navn!r}.")
     return {"fjernet": navn}
+
+
+@mcp.prompt(title="Ugeplan", description="Lav ugens madplan og indkøb, og gør kurven klar efter jeres OK")
+def ugeplan(aftener: int = 7, butik: str = "begge") -> str:
+    """Hele ugeplanen, startet manuelt (indtil en maskine kan starte den automatisk)."""
+    return f"""Lav vores ugeplan for {aftener} aftener. Butik: {butik}. Følg trinene og spring ikke over.
+
+1. Læs vis_profil, koebsmoenster (med andel_af_indkoeb fra profilens note), vis_beholdning
+   og vis_opskrifter. Har garmin-værktøjerne, så tag dagsstatus og træninger de seneste 14 dage.
+2. Spørg kort, hvad vi har i køleskabet nu, og om der er noget særligt denne uge (gæster,
+   aftener ude, vildt fra Julius). Gem svaret med opdater_beholdning. Vent på svaret.
+3. Foreslå {aftener} retter, der passer til profilen og det, vi plejer at købe. Brug hellere
+   jeres egne opskrifter end opfundne. Brug det, vi har hjemme, først.
+4. Lav indkøbslisten med mængder ("500 g hakket oksekød"), uden det vi har hjemme. Tag
+   basisvarer med, der er snart_tom. Prissæt med sammenlign_liste (oekologisk efter profilen).
+5. Vær grundig: gå alternativerne igennem, søg igen på usikre linjer med bedre søgeord, og vælg
+   ud fra pris, mængde og kvalitet. Brug tip om mængdetilbud, hvis det giver mening.
+6. Vælg butik og gem med gem_madplan (vare_id, navn, antal pakker og linjens pris for hver vare).
+7. Vis madplanen, de vigtigste valg med en kort begrundelse, samlet pris mod ugebudget og vores
+   normale forbrug, og til sidst sms_tekst i en kodeblok, så den kan sendes videre.
+8. Stop her. Først når brugeren selv skriver "OK <kode>", må du kalde fyld_kurv_fra_madplan.
+   Bestil og betal aldrig: vi vælger selv leveringstid og betaler i butikkens app."""
+
+
+def _plan_svar(p: madplan.Madplan, **ekstra: Any) -> dict:
+    d = til_json(p)
+    return {**d, "varer_i_alt": p.varer_i_alt, "i_alt": p.i_alt, "sms_tekst": madplan.sms_tekst(p), **ekstra}
+
+
+@mcp.tool(annotations=LOKAL_SKRIVER)
+async def gem_madplan(
+    butik: str, retter: list[str], linjer: list[madplan.NyLinje], gebyrer: float = 0.0, note: str | None = None
+) -> Any:
+    """Gem ugens madplan og den præcise indkøbsliste til godkendelse. Giver en kode (fx UGE-4821)
+    og en kort `sms_tekst`, som brugeren kan sende til sin partner. Ændrer ikke kurven.
+    `butik`: nemlig eller bilka (den I har valgt efter sammenligningen).
+    `retter`: fx ["Man: Ovnbagt laks med kartofler", "Tir: ..."].
+    `linjer`: de varer du har valgt: [{"vare_id": "5026540", "navn": "Hakket grisekød 8-12%",
+    "antal": 2, "pris": 70.0}], hvor `antal` er antal pakker og `pris` linjens samlede pris.
+    `gebyrer`: levering og pakning i kr. Vis planen og sms_tekst for brugeren bagefter."""
+    try:
+        p = madplan.gem(butik, retter, linjer, gebyrer, note)
+        budget = profil.hent().ugebudget_kr
+    except LokalFejl as fejl:
+        raise ToolError(str(fejl)) from None
+    advarsel = f"Planen koster {p.i_alt:.0f} kr, over ugebudgettet på {budget:.0f} kr." if budget and p.i_alt > budget else None
+    return _plan_svar(p, advarsel=advarsel)
+
+
+@mcp.tool(annotations=LOKAL_LAESER)
+async def vis_madplan(kode: str | None = None) -> Any:
+    """En gemt madplan med varer, pris, status og sms_tekst. Uden kode: den nyeste."""
+    try:
+        return _plan_svar(madplan.hent(kode))
+    except LokalFejl as fejl:
+        raise ToolError(str(fejl)) from None
+
+
+@mcp.tool(annotations=SKRIVER)
+async def fyld_kurv_fra_madplan(kode: str, godkendelse: str, kurven_maa_have_andet: bool = False) -> Any:
+    """Læg PRÆCIS varerne fra en godkendt madplan i butikkens kurv. Ændrer kun kurven.
+    Brug det KUN, når brugeren selv har skrevet sin godkendelse med koden, fx "OK UGE-4821".
+    `godkendelse` er brugerens egne ord, ordret. Står koden der ikke, sker der intet.
+    En plan kan kun bruges én gang. Er kurven ikke tom, stopper den, medmindre brugeren har sagt,
+    at det er i orden (`kurven_maa_have_andet=True`). Bestiller og betaler ALDRIG: brugeren
+    vælger selv leveringstid og betaler i butikkens app. Vis bagefter kurven og evt. advarsler."""
+    try:
+        p = madplan.hent(kode)
+    except LokalFejl as fejl:
+        raise ToolError(str(fejl)) from None
+    if not madplan.er_godkendt(p.kode, godkendelse):
+        raise ToolError(f"Det er ikke en godkendelse af {p.kode}. Bed brugeren skrive \"OK {p.kode}\".")
+    if p.status != "afventer":
+        raise ToolError(f"Madplan {p.kode} er allerede brugt (status: {p.status}). Lav en ny plan.")
+    butik = _butik(p.butik)
+    try:
+        foer = await butik.kurv()
+        if foer.linjer and not kurven_maa_have_andet:
+            andet = ", ".join(f"{ln.antal} x {ln.navn}" for ln in foer.linjer[:8])
+            raise ToolError(
+                f"Kurven hos {p.butik} er ikke tom ({andet}). Spørg brugeren, om de varer skal blive, "
+                "og kald igen med kurven_maa_have_andet=True, eller bed dem tømme kurven."
+            )
+        resultater = await butik.saet_antal({ln.vare_id: ln.antal for ln in p.linjer})
+        efter = await butik.kurv()
+    except (ButikFejl, VagtFejl, login.IntetLogin) as fejl:
+        raise ToolError(str(fejl)) from None
+    plan_ids = {ln.vare_id for ln in p.linjer}
+    i_kurven = sum((ln.beloeb for ln in efter.linjer if ln.id in plan_ids), start=Decimal(0))
+    advarsler = [f"{r.id}: {r.besked or 'kunne ikke lægges i kurven'}" for r in resultater if not r.ok]
+    if float(i_kurven) > p.varer_i_alt * (1 + float(madplan.PRISSTIGNING)):
+        advarsler.append(
+            f"Varerne koster nu {float(i_kurven):.2f} kr i kurven mod {p.varer_i_alt:.2f} kr i planen. Vis brugeren forskellen."
+        )
+    madplan.saet_status(p.kode, "kurv fyldt", f"kurv fyldt efter godkendelse: {godkendelse[:60]!r}")
+    return rens(
+        til_json(
+            {
+                "kode": p.kode,
+                "butik": p.butik,
+                "lagt_i_kurven": [r for r in resultater if r.ok],
+                "advarsler": advarsler,
+                "plan_varer_i_alt": p.varer_i_alt,
+                "kurv_varer_for_planen": i_kurven,
+                "kurv": efter,
+                "naeste_skridt": "Vælg leveringstid og betal selv i butikkens app eller på hjemmesiden.",
+            }
+        )
+    )
 
 
 @mcp.tool(annotations=LAESER)
