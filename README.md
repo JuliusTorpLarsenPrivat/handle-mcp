@@ -69,7 +69,7 @@ Beholdning, opskrifter, profil og kvitteringer ligger som JSON-filer i `%LOCALAP
 
 ## Ugeplan
 
-Skriv bare **"lav ugeplan"** i Claude Desktop (eller vælg `+` → Connectors → Add from handle → Ugeplan). Husstanden bliver spurgt om køleskab og antal aftener på Telegram. Forløbet: køleskabet → menu med prisskøn, som I retter → præcis pris i den billigste butik → "bestil" fylder kurven. En ny version af planen annullerer den forrige. Claude spørger til køleskabet, laver madplan og indkøbsliste ud fra profil, købsmønster og priser, gemmer planen med en kode og giver en SMS-tekst. Når I svarer "OK <kode>", lægges præcis de varer i kurven. I vælger selv leveringstid og betaler i butikkens app.
+Skriv bare **"lav ugeplan"** i Claude Desktop (eller vælg `+` → Connectors → Add from handle → Ugeplan). Husstanden bliver spurgt om køleskab og antal aftener på Telegram. Forløbet: køleskabet → menu med prisskøn, som I retter → præcis pris i den billigste butik → "bestil" fylder kurven. En ny version af planen annullerer den forrige. Når I svarer "bestil" (eller "ok"/"ja"), lægges præcis de godkendte varer i kurven, i én eller begge butikker. I vælger selv leveringstid og betaler i butikkens app.
 
 ## Telegram (svar fra telefonen, gratis)
 
