@@ -269,8 +269,10 @@ async def koebsmoenster(andel_af_indkoeb: float = 1.0) -> Any:
 
 @vaerktoej(LOKAL_LAESER)
 async def vis_profil() -> Any:
-    """Husstandens profil: antal personer, ugebudget (kr., inkl. levering), præferencer og ting
-    at undgå (allergier, det I ikke kan lide). Læs den, før du laver madplan eller indkøbsliste."""
+    """Husstandens profil: antal personer, ugebudget (kr. for en hel uge, inkl. levering),
+    præferencer, ting at undgå (allergier, det I ikke kan lide), faste måltider (fx morgenmad
+    hver dag, som skal med på listen og i prisen) og vareønsker (krav til bestemte varer, fx
+    "Mørk chokolade: mindst 85 %"). Læs den, før du laver madplan eller indkøbsliste."""
     return _lokalt(profil.hent)
 
 
@@ -281,10 +283,14 @@ async def opdater_profil(
     praeferencer: list[str] | None = None,
     undgaa: list[str] | None = None,
     note: str | None = None,
+    faste_maaltider: list[str] | None = None,
+    varepraeferencer: list[str] | None = None,
 ) -> Any:
     """Ret husstandens profil. Kun de felter du sender, ændres. Lister erstattes helt, så send
-    hele den nye liste (læs vis_profil først). ugebudget_kr=0 fjerner budgettet."""
-    return _lokalt(profil.opdater, personer, ugebudget_kr, praeferencer, undgaa, note)
+    hele den nye liste (læs vis_profil først). ugebudget_kr=0 fjerner budgettet.
+    Brug den også, når husstanden retter noget varigt undervejs (fx "chokoladen skal være
+    mørkere" → vareønske), så det huskes næste uge."""
+    return _lokalt(profil.opdater, personer, ugebudget_kr, praeferencer, undgaa, note, faste_maaltider, varepraeferencer)
 
 
 @vaerktoej(LOKAL_LAESER)
@@ -390,7 +396,12 @@ def _plan_svar(p: madplan.Madplan, **ekstra: Any) -> dict:
 
 @vaerktoej(LOKAL_SKRIVER)
 async def gem_madplan(
-    butik: str, retter: list[str], linjer: list[madplan.NyLinje], gebyrer: float = 0.0, note: str | None = None
+    butik: str,
+    retter: list[str],
+    linjer: list[madplan.NyLinje],
+    gebyrer: float = 0.0,
+    note: str | None = None,
+    ugebudget_kr: float | None = None,
 ) -> Any:
     """Gem ugens madplan og den præcise indkøbsliste til godkendelse. Giver en kode (fx UGE-4821)
     og en kort `sms_tekst`, som brugeren kan sende til sin partner. Ændrer ikke kurven.
@@ -398,14 +409,16 @@ async def gem_madplan(
     `retter`: fx ["Man: Ovnbagt laks med kartofler", "Tir: ..."].
     `linjer`: de varer du har valgt: [{"vare_id": "5026540", "navn": "Hakket grisekød 8-12%",
     "antal": 2, "pris": 70.0}], hvor `antal` er antal pakker og `pris` linjens samlede pris.
-    `gebyrer`: levering og pakning i kr. Vis planen og sms_tekst for brugeren bagefter."""
+    `gebyrer`: levering, poser og pakning i kr.
+    `ugebudget_kr`: denne uges budget, hvis det er justeret fra profilens (færre dage, gæster).
+    Vis planen og sms_tekst for brugeren bagefter."""
     try:
         p = madplan.gem(butik, retter, linjer, gebyrer, note)
-        budget = profil.hent().ugebudget_kr
+        budget = ugebudget_kr if ugebudget_kr else profil.hent().ugebudget_kr
     except lokal.LokalFejl as fejl:
         raise ToolError(str(fejl)) from None
-    advarsel = f"Planen koster {p.i_alt:.0f} kr, over ugebudgettet på {budget:.0f} kr." if budget and p.i_alt > budget else None
-    return _plan_svar(p, advarsel=advarsel)
+    advarsel = f"Planen koster {p.i_alt:.0f} kr, over ugens budget på {budget:.0f} kr." if budget and p.i_alt > budget else None
+    return _plan_svar(p, advarsel=advarsel, ugens_budget=budget)
 
 
 @vaerktoej(LOKAL_LAESER)

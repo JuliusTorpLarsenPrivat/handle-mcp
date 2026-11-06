@@ -143,6 +143,11 @@ async def test_svar_gemmes_og_laeses_af_claude(tg):
     # fundet live: et felt kaldet "tid" blev fjernet af persondatafilteret
     assert nye[0]["modtaget"].startswith("20") and "[fjernet]" not in str(nye)
     assert await server.vis_beskeder() == []  # nu læst
+    # bottens egen besked gemmes som historik, så hele samtalen kan læses bagefter
+    alle = telegram.beskeder(kun_nye=False)
+    assert [(b["fra"], b["tekst"]) for b in alle][0] == (telegram.SENDT_AF, "Hvad har I i køleskabet?")
+    # kvitteringen er kort (fundet i brug: den lange tekst var forvirrende)
+    assert (1, "Modtaget.") in tg.sendt
 
 
 # --- godkendelse fra telefonen ----------------------------------------------------

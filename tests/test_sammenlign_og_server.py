@@ -183,6 +183,24 @@ async def test_billigste_butik_foerst():
     assert anden.i_alt == Decimal(15 * 2 + 20 + 29)
 
 
+async def test_nemligs_posegebyr_regnes_med():
+    """Fundet i brug: planen sagde 1.180 kr, kurven 1.198 kr. Poserne står ikke på en tom kurv."""
+    (r,) = await sammenlign([FalskButik("nemlig", [("Letmælk", 10)], 36)], [("letmælk", 1)])
+    assert r.gebyrer == {"levering": Decimal(36), "poser": Decimal("17.85")}
+    assert r.i_alt == Decimal("63.85")
+
+
+async def test_posegebyr_fra_kurven_bruges_hvis_det_findes():
+    class MedPoser(FalskButik):
+        async def kurv(self):
+            k = await super().kurv()
+            k.gebyrer["poser"] = Decimal(20)
+            return k
+
+    (r,) = await sammenlign([MedPoser("nemlig", [("Letmælk", 10)], 36)], [("letmælk", 1)])
+    assert r.gebyrer["poser"] == Decimal(20)
+
+
 async def test_manglende_vare_markeres():
     b = FalskButik("b", [("Letmælk", 11)], 0)
     (r,) = await sammenlign([b], [("letmælk", 1), ("safran", 1)])

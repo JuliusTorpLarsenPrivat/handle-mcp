@@ -143,10 +143,13 @@ def frakobl_alle() -> int:
 # --- beskeder (lokalt i beskeder.json) ------------------------------------------
 
 
-def _gem_besked(fra: str, tekst: str) -> None:
+SENDT_AF = "handle (sendt)"  # bottens egne beskeder: gemt som historik, aldrig som "nye svar"
+
+
+def _gem_besked(fra: str, tekst: str, laest: bool = False) -> None:
     d = laes("beskeder")
     alle = d.get("beskeder", [])
-    alle.append({"tid": datetime.now(TIDSZONE).isoformat(timespec="minutes"), "fra": fra, "tekst": tekst[:MAKS_TEGN], "laest": False})
+    alle.append({"tid": datetime.now(TIDSZONE).isoformat(timespec="minutes"), "fra": fra, "tekst": tekst[:MAKS_TEGN], "laest": laest})
     skriv("beskeder", {"beskeder": alle[-MAKS_BESKEDER:]})
 
 
@@ -273,6 +276,7 @@ async def send_til_alle(tekst: str) -> int:
         raise TelegramFejl("Ingen telefoner er koblet på botten endnu. Kør: handle-mcp telegram-opsaet")
     for chat_id in modtagere:
         await api("sendMessage", chat_id=int(chat_id), text=tekst)
+    _gem_besked(SENDT_AF, tekst, laest=True)  # så hele samtalen kan læses bagefter
     try:
         start_lytter_i_baggrunden()  # så jeres svar bliver hentet, uden at nogen skal huske det
     except OSError as fejl:
@@ -338,7 +342,7 @@ async def haandter(opdatering: dict) -> str | None:
     if await _godkendelse(chat_id, navn, tekst):
         return f"godkendelse fra {navn} behandlet"
     _gem_besked(navn, tekst)
-    await _svar(chat_id, "Tak, det er gemt. Claude får det med, næste gang ugeplanen arbejder.")
+    await _svar(chat_id, "Modtaget.")  # kort: Claude arbejder typisk på det lige nu
     return f"besked fra {navn} gemt"
 
 

@@ -64,7 +64,28 @@ def test_kun_givne_felter_aendres():
     assert profil.opdater(ugebudget_kr=0).ugebudget_kr is None  # 0 fjerner budgettet
 
 
-@pytest.mark.parametrize("kwargs", [{"personer": 0}, {"ugebudget_kr": -1}, {"ugebudget_kr": 50000}, {"undgaa": ["x" * 81]}])
+def test_faste_maaltider_og_vareoensker():
+    p = profil.opdater(
+        faste_maaltider=["Morgenmad hver dag, 2 pers.: græsk yoghurt, vindruer, mandler, mørk chokolade"],
+        varepraeferencer=["Mørk chokolade: meget mørk, mindst 85 %"],
+    )
+    assert profil.hent() == p and p.varepraeferencer == ["Mørk chokolade: meget mørk, mindst 85 %"]
+    assert profil.opdater(personer=2).faste_maaltider == p.faste_maaltider  # bliver, når andet rettes
+
+
+def test_gammel_profil_kan_stadig_laeses():
+    """Profiler gemt før de nye felter (eller med ukendte felter) må ikke vælte."""
+    from handle_mcp.lokal import skriv
+
+    skriv("profil", {"personer": 2, "ugebudget_kr": 1500, "felt_fra_fremtiden": 1})
+    p = profil.hent()
+    assert (p.personer, p.faste_maaltider, p.varepraeferencer) == (2, [], [])
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [{"personer": 0}, {"ugebudget_kr": -1}, {"ugebudget_kr": 50000}, {"undgaa": ["x" * 81]}, {"varepraeferencer": ["x" * 151]}],
+)
 def test_ugyldig_profil_afvises(kwargs):
     with pytest.raises(LokalFejl):
         profil.opdater(**kwargs)

@@ -35,6 +35,7 @@ ERSTAT = str.maketrans({"æ": "ae", "ø": "oe", "å": "aa", "é": "e"})
 SOEGEDYBDE = 50  # hits pr. vare og butik. 10 var for lidt: de billigste lå tit under top 10.
 TILBUDSDYBDE = 200  # tilbud pr. butik (nemlig: pr. tilbudsliste), hentet én gang pr. sammenligning
 ALTERNATIVER = 4  # så Claude kan se efter og ikke bare tager første bedste
+SENE_GEBYRER = {"nemlig": {"poser": Decimal("17.85")}}  # står ikke på en tom kurv
 OEKO_TILLAEG = 1.5  # med oeko=True må en økovare koste op til 50 % mere og stadig vinde
 # Endelser der bare er bøjning af samme ord (efter æ→ae osv.): tomat/tomater, æble/æbler, løg/løgene.
 BOEJNINGER = {"", "e", "r", "er", "n", "en", "et", "ne", "ene", "erne", "s", "es"}
@@ -381,6 +382,10 @@ async def prissaet(butik: Butik, liste: list[tuple[str, int]], oeko: bool = Fals
     try:
         kurv = await butik.kurv()
         res.gebyrer = {k: v for k, v in kurv.gebyrer.items() if k != "pant"}
+        # Gebyrer, der først kommer på, når der er varer i kurven (fundet i første rigtige uge:
+        # nemlig tog 17,85 kr for poser, som ikke stod på den tomme kurv)
+        for navn, beloeb in SENE_GEBYRER.get(butik.navn, {}).items():
+            res.gebyrer.setdefault(navn, beloeb)
         res.minimumskoeb = kurv.minimumskoeb
         tilbud = await hent_tilbud(butik)  # én gang pr. butik, ikke pr. vare
         for soegning, antal in liste:  # én ad gangen: vær flink ved butikken
