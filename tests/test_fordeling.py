@@ -154,4 +154,5 @@ async def test_sammenlign_liste_giver_anbefaling(monkeypatch):
 async def test_ugeplan_forloeb():
     f = (await server.ugeplan_forloeb())["forloeb"]
     assert "hvor mange aftener" in f and "anbefaling" in f and "KØLESKABET" in f
-    assert "5 aftener" in server.ugeplan("5") and "hvor mange aftener" not in server.ugeplan("5")
+    assert "5 aftener" in server._ugeplan_tekst("5") and "hvor mange aftener" not in server._ugeplan_tekst("5")
+    assert "hvor mange aftener" in server.ugeplan()  # prompten har ingen felter

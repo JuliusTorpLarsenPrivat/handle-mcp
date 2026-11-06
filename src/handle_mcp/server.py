@@ -364,9 +364,10 @@ TRIN 4: BESTIL
 
 
 @mcp.prompt(title="Ugeplan", description="Ugens madplan: køleskab, menu, pris og 'bestil' via Telegram")
-def ugeplan(aftener: str = "") -> str:
-    """Hele ugeplanen. Lad `aftener` stå tom: så bliver husstanden spurgt."""
-    return _ugeplan_tekst(aftener)
+def ugeplan() -> str:
+    """Hele ugeplanen. Ingen felter: antal aftener spørges husstanden om på Telegram
+    (Claude Desktop viser en boks for hvert felt, også valgfrie)."""
+    return _ugeplan_tekst()
 
 
 @vaerktoej(LOKAL_LAESER)
