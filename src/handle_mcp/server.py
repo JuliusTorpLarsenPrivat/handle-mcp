@@ -272,7 +272,9 @@ async def vis_profil() -> Any:
     """Husstandens profil: antal personer, ugebudget (kr. for en hel uge, inkl. levering),
     præferencer, ting at undgå (allergier, det I ikke kan lide), faste måltider (fx morgenmad
     hver dag, som skal med på listen og i prisen) og vareønsker (krav til bestemte varer, fx
-    "Mørk chokolade: mindst 85 %"). Læs den, før du laver madplan eller indkøbsliste."""
+    "Mørk chokolade: mindst 85 %"). `fra_husstanden` er ønsker, de har sendt på Telegram, som
+    endnu ikke er flyttet til det rette felt: de gælder lige så meget. Læs den, før du laver
+    madplan eller indkøbsliste."""
     return _lokalt(profil.hent)
 
 
@@ -285,12 +287,16 @@ async def opdater_profil(
     note: str | None = None,
     faste_maaltider: list[str] | None = None,
     varepraeferencer: list[str] | None = None,
+    fra_husstanden: list[str] | None = None,
 ) -> Any:
     """Ret husstandens profil. Kun de felter du sender, ændres. Lister erstattes helt, så send
     hele den nye liste (læs vis_profil først). ugebudget_kr=0 fjerner budgettet.
-    Brug den også, når husstanden retter noget varigt undervejs (fx "chokoladen skal være
-    mørkere" → vareønske), så det huskes næste uge."""
-    return _lokalt(profil.opdater, personer, ugebudget_kr, praeferencer, undgaa, note, faste_maaltider, varepraeferencer)
+    Brug den også, når husstanden siger, at noget skal huskes til fremover (fx "chokoladen skal
+    være mørkere" → vareønske). `fra_husstanden` er ønsker, Telegram-botten selv har gemt:
+    flyt dem til det rette felt og send fra_husstanden=[] i samme kald."""
+    return _lokalt(
+        profil.opdater, personer, ugebudget_kr, praeferencer, undgaa, note, faste_maaltider, varepraeferencer, fra_husstanden
+    )
 
 
 @vaerktoej(LOKAL_LAESER)

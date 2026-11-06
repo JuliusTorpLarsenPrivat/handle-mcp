@@ -28,7 +28,7 @@ import httpx
 import keyring
 import keyring.errors
 
-from handle_mcp import madplan
+from handle_mcp import madplan, profil
 from handle_mcp.lokal import laes, skriv
 from handle_mcp.login import TJENESTE
 from handle_mcp.vagt import VagtFejl, ny_klient, send
@@ -146,10 +146,13 @@ def frakobl_alle() -> int:
 SENDT_AF = "handle (sendt)"  # bottens egne beskeder: gemt som historik, aldrig som "nye svar"
 
 
-def _gem_besked(fra: str, tekst: str, laest: bool = False) -> None:
+def _gem_besked(fra: str, tekst: str, laest: bool = False, husket: bool = False) -> None:
     d = laes("beskeder")
     alle = d.get("beskeder", [])
-    alle.append({"tid": datetime.now(TIDSZONE).isoformat(timespec="minutes"), "fra": fra, "tekst": tekst[:MAKS_TEGN], "laest": laest})
+    b = {"tid": datetime.now(TIDSZONE).isoformat(timespec="minutes"), "fra": fra, "tekst": tekst[:MAKS_TEGN], "laest": laest}
+    if husket:
+        b["gemt_i_profilen"] = True
+    alle.append(b)
     skriv("beskeder", {"beskeder": alle[-MAKS_BESKEDER:]})
 
 
@@ -173,7 +176,11 @@ def beskeder(kun_nye: bool = True, marker_laest: bool = True) -> list[dict]:
     d = laes("beskeder")
     alle = d.get("beskeder", [])
     # "modtaget", ikke "tid": persondatafilteret fjerner felter, der hedder "tid" (Bilkas bruger-id)
-    ud = [{"modtaget": b["tid"], "fra": b["fra"], "tekst": b["tekst"]} for b in alle if not (kun_nye and b.get("laest"))]
+    ud = [
+        {"modtaget": b["tid"], "fra": b["fra"], "tekst": b["tekst"], **({"gemt_i_profilen": True} if b.get("gemt_i_profilen") else {})}
+        for b in alle
+        if not (kun_nye and b.get("laest"))
+    ]
     if marker_laest and any(not b.get("laest") for b in alle):
         for b in alle:
             b["laest"] = True
@@ -341,9 +348,18 @@ async def haandter(opdatering: dict) -> str | None:
         return "besked fra ukendt chat ignoreret"
     if await _godkendelse(chat_id, navn, tekst):
         return f"godkendelse fra {navn} behandlet"
-    _gem_besked(navn, tekst)
+    husket = False
+    if profil.er_huskeoenske(tekst):
+        # Gemmes i profilen her, uden Claude: så er ønsket med i alle kommende madplaner, også
+        # hvis Claude overser det i samtalen (fundet i brug, uge 47).
+        try:
+            profil.husk_fra_husstanden(navn, tekst)
+            husket = True
+        except Exception as fejl:  # noqa: BLE001  beskeden må aldrig gå tabt
+            log.warning("Kunne ikke gemme ønsket i profilen: %s", fejl)
+    _gem_besked(navn, tekst, husket=husket)
     await _svar(chat_id, "Modtaget.")  # kort: Claude arbejder typisk på det lige nu
-    return f"besked fra {navn} gemt"
+    return f"besked fra {navn} gemt" + (" (også i profilen)" if husket else "")
 
 
 async def hent_og_haandter(vent_sekunder: int = 25) -> list[str]:

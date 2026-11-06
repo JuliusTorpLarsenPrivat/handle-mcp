@@ -77,3 +77,16 @@ def test_prompten_peger_paa_vaerktoejet():
 
 async def test_serverinstruktionen_siger_telegram():
     assert "foregår al snak med husstanden der, ikke i chatten" in server.mcp.instructions
+
+
+async def test_beskeder_fra_mellem_madplanerne_kommer_med_foer_spoergsmaalet(tg):
+    """Ellers blev en besked fra tirsdag blandet sammen med svaret om køleskabet."""
+    kobl_paa(1)
+    telegram._gem_besked("Maja", "husk vi vil have mere fisk", husket=True)
+    svar = await server.ugeplan_forloeb()
+    (b,) = svar["beskeder_siden_sidst"]
+    assert b["tekst"] == "husk vi vil have mere fisk" and b["gemt_i_profilen"] is True
+    assert telegram.antal_ulaeste() == 0  # vent_paa_svar giver dem ikke igen som svar
+    f = svar["forloeb"]
+    assert "beskeder_siden_sidst" in f and "fra_husstanden" in f and "ØNSKER TIL FREMOVER" in f
+    assert "Højst ét sådant spørgsmål" in f and "Nævn ikke for husstanden" in f

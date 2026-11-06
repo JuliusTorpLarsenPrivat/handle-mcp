@@ -6,7 +6,9 @@ Gemmes i profil.json på din egen maskine (se lokal.py).
 
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass, field
+from datetime import datetime
 
 from handle_mcp.lokal import LokalFejl, laes, skriv, tekst, tekster
 
@@ -23,6 +25,33 @@ class Profil:
     faste_maaltider: list[str] = field(default_factory=list)
     # Krav til bestemte varer, fx "Mørk chokolade: meget mørk, mindst 85 %"
     varepraeferencer: list[str] = field(default_factory=list)
+    # Ønsker, som Telegram-botten selv har gemt ("husk …", "fremover …", "vi kan ikke lide …").
+    # Står her, til Claude har flyttet dem til det rette felt, så de aldrig bliver glemt.
+    fra_husstanden: list[str] = field(default_factory=list)
+
+
+# Ord, der betyder "gem det til fremover". Bevidst bred: hellere et ønske for meget i profilen
+# (Claude rydder op) end at Maja skal sige det igen. Fundet i brug, uge 47.
+HUSKEORD = re.compile(
+    r"\b(husk\w*|gem(?:\s+det|\s+på|\s+til)|fremover|fremadrettet|i fremtiden|for fremtiden|eftertiden|"
+    r"fra nu af|altid|aldrig|næste gang|hver gang|en anden gang|generelt|permanent|"
+    r"vi (?:kan ikke lide|kan godt lide|elsker|hader|foretrækker|gider ikke))\b",
+    re.I,
+)
+MAKS_FRA_HUSSTANDEN = 30
+
+
+def er_huskeoenske(tekst: str) -> bool:
+    return bool(HUSKEORD.search(tekst or ""))
+
+
+def husk_fra_husstanden(fra: str, tekst: str) -> None:
+    """Gem et ønske direkte i profilen (bruges af Telegram-botten, uden Claude)."""
+    p = hent()
+    linje = f"{datetime.now():%d/%m} {fra}: {' '.join(tekst.split())}"[:300]
+    if linje not in p.fra_husstanden:
+        p.fra_husstanden = (p.fra_husstanden + [linje])[-MAKS_FRA_HUSSTANDEN:]
+        skriv("profil", asdict(p))
 
 
 def hent() -> Profil:
@@ -39,6 +68,7 @@ def opdater(
     note: str | None = None,
     faste_maaltider: list[str] | None = None,
     varepraeferencer: list[str] | None = None,
+    fra_husstanden: list[str] | None = None,
 ) -> Profil:
     """Ret de felter, der er givet. Felter der ikke er givet, bliver som de var.
     Lister erstattes helt, så Claude skal sende hele den nye liste."""
@@ -61,5 +91,7 @@ def opdater(
         p.faste_maaltider = tekster(faste_maaltider, "faste måltider", 14, 200)
     if varepraeferencer is not None:
         p.varepraeferencer = tekster(varepraeferencer, "vareønsker", 30, 150)
+    if fra_husstanden is not None:  # typisk [] efter at ønskerne er flyttet til de rette felter
+        p.fra_husstanden = tekster(fra_husstanden, "ønsker fra husstanden", MAKS_FRA_HUSSTANDEN, 300)
     skriv("profil", asdict(p))
     return p

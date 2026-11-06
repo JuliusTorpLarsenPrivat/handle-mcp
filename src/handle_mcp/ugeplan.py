@@ -9,7 +9,8 @@ Teksten ligger her (ikke i server.py), så den kan rettes uden at genstarte Clau
 
 from __future__ import annotations
 
-from handle_mcp import telegram
+from handle_mcp import persondata, telegram
+from handle_mcp.lokal import LokalFejl
 
 FOERSTE_SPOERGSMAAL = (
     "Hej! Ny madplan på vej.\n"
@@ -41,9 +42,7 @@ TRIN 2: MENUEN (uden priser, men med et prisskøn)
    vi HAR hjemme og derfor ikke køber (fx æg, citron, dijon, olie, krydderier), så vi kan rette
    det nu og ikke efter prissætningen. Spørg: "Rettelser, eller er menuen god?" Vent på svaret.
 6. Ret menuen, til den er god. Gør det en rettelse meget dyrere, så sig det og foreslå et
-   alternativ. Er en rettelse varig (fx "chokoladen skal være mørkere", "vi kan ikke lide
-   rosenkål"), så gem den også i profilen med opdater_profil (vareønsker, ting at undgå).
-   Først når menuen er godkendt, går du videre.
+   alternativ. Følg ØNSKER TIL FREMOVER nedenfor. Først når menuen er godkendt, går du videre.
 
 TRIN 3: PRISEN
 7. Lav indkøbslisten ud fra opskrifternes ingredienser og de faste måltider, med mængder til
@@ -66,12 +65,30 @@ TRIN 4: BESTIL
 11. Når kurven er fyldt: slå leveringstider op og send ét forslag til levering, dagen før
     planens første dag (fx "Lever lørdag 15/11 mellem 17 og 20, maden starter søndag"). Skriv,
     at de selv vælger tiden og betaler i butikkens app.
-12. Bestil og betal aldrig selv: vi vælger leveringstid og betaler i butikkens app."""
+12. Bestil og betal aldrig selv: vi vælger leveringstid og betaler i butikkens app.
+
+ØNSKER TIL FREMOVER (gælder hele forløbet)
+- Siger husstanden på nogen måde, at noget skal huskes til fremover ("husk", "fra nu af",
+  "altid", "aldrig", "vi kan ikke lide …", "næste gang …", "gem det"), så gem det i profilen
+  med opdater_profil i det rette felt: vareønsker (en bestemt vare), ting at undgå,
+  præferencer (madstil) eller faste måltider. Gør det med det samme, uden at spørge.
+- Beskeder med "gemt_i_profilen" har botten allerede lagt i profilens fra_husstanden. Flyt
+  dem til det rette felt og ryd fra_husstanden i samme opdater_profil-kald. Handler et af dem
+  kun om denne uge (fx "husk gæster lørdag"), så brug det i planen og gem det ikke.
+- Nævn ikke for husstanden, hvad du har gemt, medmindre de spørger.
+- Spørg kun, om noget skal gemmes, når en rettelse handler om smag eller en vare generelt og
+  ikke står i profilen i forvejen, fx "fennikel er ikke lige os" eller "kødet var for fedt
+  sidst". Spørg IKKE ved rettelser om denne uge: dage, gæster, tid, lyst, rækkefølge eller
+  pris ("ikke fisk tirsdag", "byt torsdag og fredag", "noget hurtigere onsdag").
+  Højst ét sådant spørgsmål pr. madplan, som én kort linje sidst i din næste besked, fx
+  "Skal jeg huske, at I ikke vil have fennikel?". Ja → gem. Intet svar eller nej → gem ikke."""
 
 FORBEREDELSE = """FORBEREDELSE (stille, uden at spørge nogen)
-1. Læs vis_profil (også faste måltider og vareønsker), koebsmoenster (andel_af_indkoeb fra
-   profilens note), vis_beholdning og vis_opskrifter. Har du garmin-værktøjerne, så tag
-   dagsstatus og træninger 14 dage tilbage."""
+1. Læs vis_profil (også faste måltider, vareønsker og fra_husstanden), koebsmoenster
+   (andel_af_indkoeb fra profilens note), vis_beholdning og vis_opskrifter. Har du
+   garmin-værktøjerne, så tag dagsstatus og træninger 14 dage tilbage.
+   Gå `beskeder_siden_sidst` (beskeder sendt mellem madplanerne) og profilens fra_husstanden
+   igennem efter ØNSKER TIL FREMOVER, og ryd op i profilen, før du laver menuen."""
 
 
 def tekst_telegram(sendt_til: int) -> str:
@@ -116,12 +133,22 @@ def telegram_klar() -> bool:
     return bool(telegram.chats())
 
 
+def _beskeder_siden_sidst() -> list[dict]:
+    """Ulæste beskeder fra før denne madplan. Hentes FØR spørgsmålet sendes, så de ikke blandes
+    sammen med svaret om køleskabet (og ikke bliver overset)."""
+    try:
+        return persondata.rens(telegram.beskeder(kun_nye=True))
+    except LokalFejl:
+        return []
+
+
 async def start() -> dict:
     """Start madplanen: send det første spørgsmål på Telegram, hvis det er sat op."""
     if telegram_klar():
+        tidligere = _beskeder_siden_sidst()
         try:
             n = await telegram.send_til_alle(FOERSTE_SPOERGSMAAL)
         except telegram.TelegramFejl as fejl:
-            return {"telegram": f"kunne ikke sende ({fejl})", "forloeb": tekst_chat()}
-        return {"telegram": f"spørgsmålet er sendt til {n} telefon(er)", "forloeb": tekst_telegram(n)}
+            return {"telegram": f"kunne ikke sende ({fejl})", "beskeder_siden_sidst": tidligere, "forloeb": tekst_chat()}
+        return {"telegram": f"spørgsmålet er sendt til {n} telefon(er)", "beskeder_siden_sidst": tidligere, "forloeb": tekst_telegram(n)}
     return {"telegram": "ikke sat op", "forloeb": tekst_chat()}

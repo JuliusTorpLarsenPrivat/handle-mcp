@@ -278,3 +278,77 @@ async def test_ugen_er_afsluttet_naar_planen_er_brugt(tg, monkeypatch):
     assert telegram.ugen_er_afsluttet(start)
     fremtid = (datetime.now(telegram.TIDSZONE) + timedelta(hours=1)).isoformat(timespec="minutes")
     assert not telegram.ugen_er_afsluttet(fremtid)  # gamle planer tæller ikke
+
+
+# --- ønsker til fremover (fundet i brug, uge 47) -----------------------------------
+
+
+@pytest.mark.parametrize(
+    "tekst",
+    [
+        "Husk at chokoladen skal være mindst 85 %",
+        "Fra nu af vil vi gerne have mere fisk",
+        "vi kan ikke lide rosenkål",
+        "Næste gang må kyllingen gerne være økologisk",
+        "Gem det til fremover: ingen koriander",
+        "Vi køber aldrig light-produkter",
+    ],
+)
+async def test_oensker_gemmes_i_profilen_af_botten_selv(tg, tekst):
+    """Uden Claude: ønsket ligger i profilen, også hvis Claude overser beskeden."""
+    from handle_mcp import profil
+
+    par(tg, 1)
+    await telegram.hent_og_haandter(0)
+    tg.besked(1, tekst, navn="Maja")
+    assert (await telegram.hent_og_haandter(0))[-1] == "besked fra Maja gemt (også i profilen)"
+    (linje,) = profil.hent().fra_husstanden
+    assert linje.endswith(f"Maja: {tekst}")
+    (b,) = await server.vis_beskeder()
+    assert b["gemt_i_profilen"] is True and b["tekst"] == tekst
+    assert (1, "Modtaget.") in tg.sendt  # ingen ekstra snak om det
+
+
+@pytest.mark.parametrize(
+    "tekst",
+    ["2 løg og en halv pakke smør", "Ikke fisk tirsdag", "Byt torsdag og fredag", "5 aftener fra søndag, gæster lørdag"],
+)
+async def test_almindelige_svar_gemmes_ikke_i_profilen(tg, tekst):
+    from handle_mcp import profil
+
+    par(tg, 1)
+    await telegram.hent_og_haandter(0)
+    tg.besked(1, tekst)
+    await telegram.hent_og_haandter(0)
+    assert profil.hent().fra_husstanden == []
+    assert "gemt_i_profilen" not in (await server.vis_beskeder())[0]
+
+
+async def test_samme_oenske_gemmes_kun_en_gang_og_kan_ryddes(tg):
+    from handle_mcp import profil
+
+    par(tg, 1)
+    await telegram.hent_og_haandter(0)
+    tg.besked(1, "husk mørk chokolade", navn="Maja")
+    await telegram.hent_og_haandter(0)
+    tg.besked(1, "husk mørk chokolade", navn="Maja")
+    await telegram.hent_og_haandter(0)
+    assert len(profil.hent().fra_husstanden) == 1
+    # Claude flytter ønsket til det rette felt og rydder op i samme kald
+    await server.opdater_profil(varepraeferencer=["Mørk chokolade: mindst 85 %"], fra_husstanden=[])
+    p = profil.hent()
+    assert p.fra_husstanden == [] and p.varepraeferencer == ["Mørk chokolade: mindst 85 %"]
+
+
+async def test_fejl_i_profilen_taber_ikke_beskeden(tg, monkeypatch):
+    from handle_mcp import profil
+
+    def gaar_galt(*a):
+        raise OSError("disken er fuld")
+
+    monkeypatch.setattr(profil, "husk_fra_husstanden", gaar_galt)
+    par(tg, 1)
+    await telegram.hent_og_haandter(0)
+    tg.besked(1, "husk ingen koriander")
+    await telegram.hent_og_haandter(0)
+    assert [b["tekst"] for b in await server.vis_beskeder()] == ["husk ingen koriander"]
