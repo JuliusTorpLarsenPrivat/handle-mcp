@@ -350,7 +350,8 @@ async def _godkendelse(chat_id: str, navn: str, tekst: str) -> bool:
         besked += "\nObs:\n- " + "\n- ".join(svar["advarsler"])
         besked += "\n" + (ERSTATNING_LYTTER if claude_lytter() else ERSTATNING_IKKE_LYTTER)
     else:
-        besked += "\nVælg leveringstid og betal i appen."
+        # Fundet i test 4: en åben browser med en gammel kurv skrev den tilbage til kontoen
+        besked += "\nVælg leveringstid og betal i appen. Har I kurven åben i browseren eller appen, så genindlæs den først."
     for anden in chats():
         await _svar(anden, besked)
     _gem_besked("handle-botten", besked)  # så Claude kan se, at kurven er fyldt

@@ -71,7 +71,10 @@ TRIN 2: MENUEN (uden priser, men med et prisskøn)
 5. Send menuen kort: én linje pr. dag med ret, tid og skønnet pris, én linje med de faste
    måltider og deres skøn, og det samlede skøn mod ugens budget. Tilføj BASISVARER (se
    nedenfor). Spørg: "Rettelser, eller er menuen god?" Vent på svaret.
-6. Ret menuen, til den er god. Gør det en rettelse meget dyrere, så sig det og foreslå et
+6. Ret menuen, til den er god. Beder de om en billigere plan, så skriv med det samme kort, hvad
+   der er ændret, og hvad det sparer (fx "Tir: nakkekoteletter i stedet for mørbrad, −40 kr"),
+   så de ikke skal spørge (fundet i test 4). En pris, de selv sætter for ugen ("lav en plan til
+   ca. 1200"), er ugens budget: brug den i valg={"ugebudget_kr": …}. Gør det en rettelse meget dyrere, så sig det og foreslå et
    alternativ. Følg ØNSKER TIL FREMOVER nedenfor. Først når menuen er godkendt, går du videre.
 
 TRIN 3: PRISEN
@@ -87,6 +90,9 @@ TRIN 3: PRISEN
    deling: butik="begge" og "butik" på hver vare. Send: butik(ker), total inkl. levering og
    poser mod ugens budget, antal varer, de 3-5 vigtigste valg kort, evt. budgetadvarsel, og
    "Skriv bestil, eller ret noget".
+   Skriv KUN ét beløb, de skal betale. Den anden butik nævnes som en forskel, fx "(Bilka ville
+   være ca. 360 kr dyrere)", aldrig som en total (fundet i test 4: "1.474 kr" og "1.112 kr" i
+   samme besked forvirrede).
 
 TRIN 4: BESTIL
 10. "bestil" (eller "ok"/"ja") fylder kurven/kurvene og giver besked. Vent på svaret og fortæl,
@@ -115,6 +121,8 @@ Fundet i en test: alle laks i Bilka var enten opdrættede, frosne eller kunne ik
      broccoli). Undgå en protein, der allerede er på menuen samme uge.
   3. En helt anden ret fra vores opskriftssider til samme dag og tid.
   Hold prisen på niveau med den gamle ret, og fjern de varer, der kun var til den gamle ret.
+  Der skal stadig være mad nok til alle, der spiser med: skriv aldrig "lidt stramt", men køb
+  nok, eller vælg noget andet (fundet i test 4: én kylling til 4 personer).
 - Sker det FØR "bestil" (under prissætningen): skift retten, prissæt den, og skriv øverst i
   prisbeskeden "Ændret: Tor laks → svinemørbrad med kartofler og broccoli (ingen vildfanget
   fersk laks i Bilka)". "bestil" godkender så også ændringen. Ingen ekstra spørgsmål.
@@ -129,15 +137,19 @@ Gæt aldrig stille. Hver basisvare, som ugens retter og faste måltider skal bru
 mælk, fløde, citron, løg, hvidløg, mel, olie, sukker, salt, peber, bouillon, sennep, ris, pasta
 osv.), står i menubeskeden på én af to lister, så vi kan tjekke køleskab og skab, før der
 handles, og ikke mangler noget midt i madlavningen:
-  Køber til ugen: <basisvare (til hvad)>, …
-  Tjek, at I har: <basisvare (til hvad)>, …
+  Køber til ugen: æg, kartofler, hakkede tomater, …
+  Tjek, at I har: smør, mælk, citron, olivenolie, ris, …
   "Skriv 'har X' eller 'køb Y', hvis noget skal flyttes."
+  KUN varenavne, ingen begrundelser i parentes (Julius: listen blev lang og uoverskuelig).
+  Spørger de, hvad noget skal bruges til, så svar dem.
 Sådan fordeles de (brug koebsmoenster → basisvarer_pr_type og svaret om køleskabet):
 - Nævnt i svaret om køleskabet, eller i beholdningen → ingen af listerne (vi har det).
 - Kølevare (sted "køl": æg, smør, mælk, fløde, citron …) → Køber, medmindre den er "købt for
   nylig". Så står den under Tjek. Vi regner ALDRIG med kølevarer, vi ikke har nævnt.
-- Skabsvare (sted "skab": mel, olie, salt, ris …) → Tjek, medmindre den er "snart tom" eller
-  ukendt for os. Så står den under Køber.
+- Skabsvare (sted "skab": mel, olie, salt, ris …) → Tjek, medmindre den er "snart tom". Så
+  står den under Køber. Er den ukendt for os, står den under Tjek (fundet i test 4: salt og
+  peber blev købt, fordi de var "ukendte"). Salt, peber og tørrede krydderier køber vi kun,
+  når husstanden beder om det.
 - Mængden tæller: skal ugen bruge meget (fx 10 æg), så Køber, også selvom den er købt for nylig.
 - Retter vi listerne, så følg det i indkøbslisten, og gem et "har altid" i profilen som et
   vareønske (fx "Salt, peber, olie: har vi altid").
@@ -163,7 +175,10 @@ FORBEREDELSE = """FORBEREDELSE (stille, uden at spørge nogen)
    (andel_af_indkoeb fra profilens note), vis_beholdning og vis_opskrifter. Har du
    garmin-værktøjerne, så tag dagsstatus og træninger 14 dage tilbage.
    Gå `beskeder_siden_sidst` (beskeder sendt mellem madplanerne) og profilens fra_husstanden
-   igennem efter ØNSKER TIL FREMOVER, og ryd op i profilen, før du laver menuen."""
+   igennem efter ØNSKER TIL FREMOVER, og ryd op i profilen, før du laver menuen.
+   Tjek begge kurve med vis_kurv. Ligger der varer fra før, så skriv det her i chatten til
+   Julius (ikke på Telegram) og spørg, om de skal tømmes. Fundet i test 4: en gammel
+   Bilka-kurv kom tilbage, fordi bilkatogo.dk stod åben i browseren med den gamle kurv."""
 
 
 def tekst_telegram(sendt_til: int) -> str:

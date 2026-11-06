@@ -327,8 +327,17 @@ class Linje:
     behov: Maengde | None = None
 
     @property
-    def pakker(self) -> int:
+    def behov_pakker(self) -> int:
         return (antal_pakker(self.valgt, self.behov) if self.valgt else None) or 1
+
+    @property
+    def pakker(self) -> int:
+        """Pakker at købe. For holdbare varer rundes op til et mængdetilbud, når de ekstra
+        koster mindre end én pakke til normalpris (Julius: "3 stk. 78,-" på mandler)."""
+        n = self.behov_pakker
+        if self.valgt and self.antal == 1 and (k := tilbud_til_lager(self.valgt, n)):
+            return k
+        return n
 
     @property
     def beloeb(self) -> Decimal:
@@ -337,7 +346,38 @@ class Linje:
 
     @property
     def tip(self) -> str | None:
-        return tilbud_tip(self.valgt, self.pakker * self.antal) if self.valgt else None
+        if not self.valgt:
+            return None
+        if self.pakker != self.behov_pakker:
+            mt = maengdetilbud(self.valgt.tilbud)
+            return f"Mængdetilbud på holdbar vare: købt {self.pakker} i stedet for {self.behov_pakker} ({mt[1] / mt[0]:.2f} kr/stk), resten holder til senere"
+        return tilbud_tip(self.valgt, self.pakker * self.antal)
+
+
+HOLDBARE_KATEGORIER = ("kolonial", "snacks og søde sager", "drikkevarer")
+MAKS_EKSTRA_TIL_LAGER = 2
+
+
+def er_holdbar(v: Vare) -> bool:
+    """Holder i skabet i måneder: mandler, chokolade, pasta, dåser … (ikke grønt og køl)."""
+    from handle_mcp import historik
+
+    navn = v.navn.upper()
+    if typ := historik.basistype(navn):
+        return historik.BASISTYPER[typ][0] == "skab" and typ not in ("kartofler", "løg", "hvidløg")
+    return historik.kategori(navn) in HOLDBARE_KATEGORIER
+
+
+def tilbud_til_lager(v: Vare, n: int) -> int | None:
+    """Antal at købe, hvis et mængdetilbud på en holdbar vare kan betale sig: højst 2 ekstra,
+    og de ekstra skal samlet koste mindre end én pakke til normalpris. Ellers None."""
+    mt = maengdetilbud(v.tilbud)
+    if not mt or n % mt[0] == 0 or mt[1] >= v.pris * mt[0] or not er_holdbar(v):
+        return None
+    k = -(-n // mt[0]) * mt[0]
+    if k - n > MAKS_EKSTRA_TIL_LAGER or pris_for_antal(v.pris, v.tilbud, k) - pris_for_antal(v.pris, v.tilbud, n) >= v.pris:
+        return None
+    return k
 
 
 @dataclass

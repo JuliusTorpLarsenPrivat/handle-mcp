@@ -122,3 +122,11 @@ async def test_forloebet_har_basisvarelister(tg):
     f = (await server.ugeplan_forloeb())["forloeb"]
     assert "Køber til ugen:" in f and "Tjek, at I har:" in f and "basisvarer_pr_type" in f
     assert "ALDRIG med kølevarer" in f and "regner med, vi HAR hjemme" not in f
+
+
+async def test_forloebet_fra_fjerde_test(tg):
+    kobl_paa(1)
+    f = (await server.ugeplan_forloeb())["forloeb"]
+    assert "KUN varenavne, ingen begrundelser" in f and "Salt, peber og tørrede krydderier køber vi kun" in f
+    assert "Skriv KUN ét beløb" in f and "skriv aldrig \"lidt stramt\"" in f
+    assert "skriv med det samme kort, hvad" in f and "Tjek begge kurve med vis_kurv" in f

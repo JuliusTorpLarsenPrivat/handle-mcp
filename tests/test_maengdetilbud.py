@@ -81,3 +81,45 @@ async def test_tip_i_sammenlign_liste(monkeypatch):
     assert r["linjer"][0]["beloeb"] == 150 and r["linjer"][0]["tip"] is None
     (r,) = (await server.sammenlign_liste(["1 stk hel kylling"], butikker=["b"]))["butikker"]
     assert r["linjer"][0]["tip"].startswith("Mængdetilbud: køb 2 for 150")
+
+
+# --- mængdetilbud på holdbare varer (Julius: "3 stk. 78,-" på mandler) -------------------
+
+
+def test_holdbar_vare_rundes_op_til_maengdetilbud():
+    from decimal import Decimal
+
+    from handle_mcp.data import Vare
+    from handle_mcp.maengde import Maengde
+    from handle_mcp.sammenlign import Linje
+
+    mandler = Vare("nemlig", "1", "Mandler øko.", Decimal("31.95"), maengde="150 g", tilbud="3 stk. 78,-")
+    ln = Linje("300 g mandler", 1, mandler, [], True, Maengde(300, "g"))
+    assert (ln.behov_pakker, ln.pakker, ln.beloeb) == (2, 3, Decimal("78.00"))
+    assert "købt 3 i stedet for 2" in ln.tip
+
+
+def test_frisk_vare_rundes_ikke_op():
+    from decimal import Decimal
+
+    from handle_mcp.data import Vare
+    from handle_mcp.maengde import Maengde
+    from handle_mcp.sammenlign import Linje
+
+    kylling = Vare("nemlig", "2", "Kyllingebryst øko", Decimal("60"), maengde="400 g", tilbud="3 for 150")
+    ln = Linje("800 g kyllingebryst", 1, kylling, [], True, Maengde(800, "g"))
+    assert ln.pakker == 2 and "køb 3" in ln.tip  # kun et tip: frisk kød holder ikke
+
+
+def test_for_mange_ekstra_eller_for_dyrt_rundes_ikke_op():
+    from decimal import Decimal
+
+    from handle_mcp.data import Vare
+    from handle_mcp.sammenlign import tilbud_til_lager
+
+    pasta = Vare("nemlig", "3", "Spaghetti øko", Decimal("15"), maengde="500 g", tilbud="6 for 60")
+    assert tilbud_til_lager(pasta, 1) is None  # 5 ekstra er for mange
+    olie = Vare("nemlig", "4", "Olivenolie", Decimal("60"), maengde="500 ml", tilbud="2 for 115")
+    assert tilbud_til_lager(olie, 1) == 2  # den ekstra koster 55 kr, under normalprisen
+    ikke_billigere = Vare("nemlig", "5", "Olivenolie", Decimal("60"), maengde="500 ml", tilbud="2 for 125")
+    assert tilbud_til_lager(ikke_billigere, 1) is None
