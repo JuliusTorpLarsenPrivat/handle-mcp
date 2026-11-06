@@ -36,7 +36,8 @@ async def test_madplan_sender_selv_spoergsmaalet_paa_telegram(tg):
     kobl_paa(1, 2)
     svar = await server.ugeplan_forloeb()
     assert [c for c, _ in tg] == [1, 2] and all(t == ugeplan.FOERSTE_SPOERGSMAAL for _, t in tg)
-    assert "køleskab" in tg[0][1] and "aftener" in tg[0][1]
+    assert "Rester" in tg[0][1] and "fryseren" in tg[0][1] and "aftener" in tg[0][1]
+    assert "Basisvarer" in tg[0][1] and "behøver I ikke nævne" in tg[0][1]  # tjekkes via listerne
     f = svar["forloeb"]
     assert "ER ALLEREDE SENDT til 2 telefon(er)" in f
     assert "Stil det IKKE igen" in f and "ingen spørgsmål til husstanden her i chatten" in f

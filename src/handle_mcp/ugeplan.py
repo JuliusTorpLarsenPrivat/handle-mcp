@@ -14,7 +14,9 @@ from handle_mcp.lokal import LokalFejl
 
 FOERSTE_SPOERGSMAAL = (
     "Hej! Ny madplan på vej.\n"
-    "1) Hvad har I i køleskab, fryser og skab, der skal bruges?\n"
+    "1) Hvad skal bruges denne uge? Rester, friske varer der snart skal bruges, og det fra "
+    "fryseren I vil have brugt. Basisvarer (æg, mel, olie …) behøver I ikke nævne, dem tjekker "
+    "jeg med jer bagefter.\n"
     "2) Hvor mange aftener skal vi have mad til, og fra hvilken dag?\n"
     "3) Noget særligt denne uge? (gæster, spise ude, vildt)\n"
     "Svar bare her. Tal gerne ind med mikrofonen på tastaturet eller via Siri (ikke som talebesked)."
