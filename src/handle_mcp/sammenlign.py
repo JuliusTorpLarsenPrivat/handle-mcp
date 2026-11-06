@@ -45,6 +45,8 @@ FORMER = {"filet", "fileter", "koed", "tern", "strimler", "stykker", "ost"}  # f
 SYNONYMER = {"svine": "grise", "grise": "svine", "frosne": "frost", "frossen": "frost", "frosset": "frost"}
 # Egenskaber der tæller fuldt, uanset om de står i navnet eller i mængden ("500 g / frost").
 EGENSKABER = {"frost", "oeko", "oekologisk", "okologisk"}
+ENHEDSORD = {"g", "gr", "kg", "ml", "cl", "dl", "l", "ltr", "stk", "x", "pk", "bdt"}
+PROCENT = re.compile(r"(\d+(?:[.,]\d+)?)\s*%")
 
 
 def ord_i(tekst: str) -> set[str]:
@@ -99,7 +101,8 @@ def point(soegning: str, vare: Vare, sammensat: bool = True) -> float:
     """Andelen af søgeordene, der passer med varen. Ord i varens hoveddel (og mærket) giver
     fuldt point, ord i tilbehør eller mængde højst halvt. Står der selv tilbehør i søgningen
     ("makrel i tomat", "tun i vand"), tæller tilbehøret fuldt."""
-    oensket = ord_i(soegning) - FYLDORD
+    # Tal og enheder er mængde, ikke vare: "400 g" må ikke gøre majsmel til nakkekoteletter
+    oensket = {o for o in ord_i(soegning) - FYLDORD - ENHEDSORD if not o.isdigit()}
     if not oensket:
         return 0.0
     hoved, _, tilbehoer = _del(vare.navn)
@@ -120,7 +123,13 @@ def point(soegning: str, vare: Vare, sammensat: bool = True) -> float:
             f = max(f, _dyr_og_stykke(v, alle, fuld))
         return max(f, min(h, loft))
 
-    resultat = sum(bedste(o) for o in oensket) / len(oensket)
+    pr_ord = {o: bedste(o) for o in oensket}
+    if oensket - EGENSKABER and not any(pr_ord[o] for o in oensket - EGENSKABER):
+        return 0.0  # kun "øko"/"frost" passer, selve varen gør ikke (fundet live: majsmel øko)
+    resultat = sum(pr_ord.values()) / len(oensket)
+    # Procent er en egenskab ved varen: 85 % chokolade er ikke 50 % (fundet live)
+    if (pct := set(PROCENT.findall(soegning))) and not pct <= set(PROCENT.findall(f"{vare.navn} {vare.maengde or ''}")):
+        return min(resultat, 0.5)
     if EFTERLIGNING.search(vare.navn) and not EFTERLIGNING.search(soegning):
         return min(resultat, 0.5)  # "Græskinspireret yoghurt" er ikke græsk yoghurt (fundet i test 3)
     return resultat
@@ -145,6 +154,14 @@ def _del(navn: str) -> tuple[str, str, str]:
     """(hoveddel, skille, tilbehør) af et varenavn."""
     m = TILBEHOER.search(navn.lower())
     return (navn, "", "") if not m else (navn[: m.start()], m.group(), navn[m.end():])
+
+
+MULTIPAK = re.compile(r"^\s*(\d+)\s*x\s*\d", re.I)
+
+
+def er_multipak(v: Vare) -> bool:
+    """"12 x 400 g" er en kasse. Fundet live: 12 dåser hakkede tomater til 156 kr til én ret."""
+    return bool((m := MULTIPAK.match(v.maengde or "")) and int(m.group(1)) >= 3)
 
 
 def rangeret(
@@ -182,6 +199,7 @@ def rangeret(
             er_forarbejdet(v, oensket),  # rå vare frem for pålæg, færdigret og indbagt
             er_blanding(v, oensket),  # "Ærter" frem for "Ærter og gulerødder"
             har_tilbehoer(v),  # "Kartofler" frem for "Kartofler m. krydderurter"
+            behov_ is None and er_multipak(v),  # uden mængde: én dåse, ikke en kasse med 12
             kost is None,  # varer, hvor vi kan regne pakkerne ud, først
             float(kost or 0) / rabat,
             v.enhed != hovedenhed,

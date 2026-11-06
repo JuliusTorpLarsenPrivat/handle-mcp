@@ -38,13 +38,21 @@ def _laes(m: re.Match) -> Maengde:
 
 
 def behov(soegning: str) -> tuple[str, Maengde | None]:
-    """Del "500 g hakket oksekød" i ("hakket oksekød", 500 g). Mængden må stå først eller sidst."""
+    """Del "500 g hakket oksekød" i ("hakket oksekød", 500 g). Mængden står helst først eller
+    sidst, men en enkelt mængde midt i teksten tæller også: "Nakkekoteletter 400 g øko" (fundet
+    live: uden mængden vandt laveste kilopris, fx 12 dåser hakkede tomater til 156 kr)."""
     tekst = soegning.strip()
-    for m in MAENGDE.finditer(tekst):
+    fundne = list(MAENGDE.finditer(tekst))
+    for m in fundne:
         if m.start() == 0 or m.end() == len(tekst):
             rest = (tekst[: m.start()] + tekst[m.end():]).strip(" ,")
             if rest:
                 return rest, _laes(m)
+    if len(fundne) == 1:
+        m = fundne[0]
+        rest = " ".join((tekst[: m.start()] + " " + tekst[m.end():]).split()).strip(" ,")
+        if rest:
+            return rest, _laes(m)
     return tekst, None
 
 

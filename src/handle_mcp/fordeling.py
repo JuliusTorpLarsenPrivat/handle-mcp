@@ -8,6 +8,8 @@ Fremgangsmåde, ud fra prissætningen af hele listen i hver butik (sammenlign.py
   2. Delt: hver vare der, hvor den er billigst. Når en butik under minimumskøbet, flyttes de
      varer, der koster mindst ekstra, derover, indtil den gør. Kan det ikke lade sig gøre,
      droppes delingen.
+  Et usikkert match (måske forkert vare) tæller med den sikre pris fra den anden butik, så et
+  forkert billigt match ikke gør en butik billig. Det står i tjek_foerst.
   3. Den billigste mulighed, hvor alle varer findes, og alle brugte butikker når minimumskøbet,
      vinder. To butikker vælges kun, når det samlet er billigere end den bedste enkelte butik.
 """
@@ -28,6 +30,7 @@ class Mulighed:
     gebyrer: dict[str, Decimal]  # butik -> gebyrer i alt
     mangler: list[str] = field(default_factory=list)
     under_minimum: list[str] = field(default_factory=list)
+    usikre: list[str] = field(default_factory=list)  # tæller med, men skal tjekkes af Claude
 
     @property
     def i_alt(self) -> Decimal:
@@ -42,28 +45,45 @@ def _gebyr(r: Butiksresultat) -> Decimal:
     return sum(r.gebyrer.values(), Decimal(0))
 
 
-def _beloeb(r: Butiksresultat, i: int) -> Decimal | None:
-    ln = r.linjer[i] if i < len(r.linjer) else None
-    return ln.beloeb if ln and ln.valgt else None
+def _linje(r: Butiksresultat, i: int):
+    return r.linjer[i] if i < len(r.linjer) else None
+
+
+def _beloeb(r: Butiksresultat, i: int, alle: dict[str, Butiksresultat] | None = None) -> Decimal | None:
+    """Prisen for linjen, eller None hvis varen ikke findes.
+
+    Et USIKKERT match tæller med den sikre pris fra en anden butik, hvis der er en. Fundet live:
+    usikre match (majsmel for nakkekoteletter, ketchup for salt) talte med deres lave pris, så
+    butikken med flest forkerte match så billigst ud. Nu kan et forkert match hverken gøre en
+    butik billig eller smide den ud; linjen står som usikker, og Claude tjekker den."""
+    ln = _linje(r, i)
+    if not ln or not ln.valgt:
+        return None
+    if ln.sikker:
+        return ln.beloeb
+    sikre = [o.beloeb for b in (alle or {}).values() if b is not r and (o := _linje(b, i)) and o.valgt and o.sikker]
+    return min(sikre) if sikre else ln.beloeb
 
 
 def _mulighed(navn: str, fordeling: dict[str, list[int]], res: dict[str, Butiksresultat], liste: list[str]) -> Mulighed:
-    varer, gebyrer, mangler, under = {}, {}, [], []
+    varer, gebyrer, mangler, under, usikre = {}, {}, [], [], []
     for butik, linjer in fordeling.items():
         if not linjer:
             continue
         r = res[butik]
         sum_ = Decimal(0)
         for i in linjer:
-            b = _beloeb(r, i)
+            b = _beloeb(r, i, res)
             if b is None:
                 mangler.append(liste[i])
-            else:
-                sum_ += b
+                continue
+            sum_ += b
+            if not _linje(r, i).sikker:
+                usikre.append(f"{butik}: {liste[i]} → {_linje(r, i).valgt.navn}")
         varer[butik], gebyrer[butik] = sum_, _gebyr(r)
         if r.minimumskoeb and sum_ < r.minimumskoeb:
             under.append(butik)
-    return Mulighed(navn, {b: l for b, l in fordeling.items() if l}, varer, gebyrer, mangler, under)
+    return Mulighed(navn, {b: l for b, l in fordeling.items() if l}, varer, gebyrer, mangler, under, usikre)
 
 
 def find_billigste(resultater: list[Butiksresultat]) -> dict:
@@ -80,7 +100,7 @@ def find_billigste(resultater: list[Butiksresultat]) -> dict:
         a, b = res
         delt: dict[str, list[int]] = {a: [], b: []}
         for i in range(n):
-            pa, pb = _beloeb(res[a], i), _beloeb(res[b], i)
+            pa, pb = _beloeb(res[a], i, res), _beloeb(res[b], i, res)
             if pa is None and pb is None:
                 delt[a].append(i)  # findes ingen af stederne: tæller som mangler
             elif pb is None or (pa is not None and pa <= pb):
@@ -91,10 +111,10 @@ def find_billigste(resultater: list[Butiksresultat]) -> dict:
         for lav, hoej in ((a, b), (b, a)):
             minimum = res[lav].minimumskoeb or Decimal(0)
             while delt[lav] and delt[hoej]:
-                i_lav = sum((_beloeb(res[lav], i) or Decimal(0) for i in delt[lav]), Decimal(0))
+                i_lav = sum((_beloeb(res[lav], i, res) or Decimal(0) for i in delt[lav]), Decimal(0))
                 if i_lav >= minimum:
                     break
-                kandidater = [(_beloeb(res[lav], i) - _beloeb(res[hoej], i), i) for i in delt[hoej] if _beloeb(res[lav], i) is not None]
+                kandidater = [(_beloeb(res[lav], i, res) - _beloeb(res[hoej], i, res), i) for i in delt[hoej] if _beloeb(res[lav], i, res) is not None]
                 if not kandidater:
                     break
                 _, flyt = min(kandidater)
@@ -142,6 +162,7 @@ def find_billigste(resultater: list[Butiksresultat]) -> dict:
         "fordeling": {butik: [liste[i] for i in sorted(linjer)] for butik, linjer in bedst.fordeling.items()},
         "varer_pr_butik": bedst.varer,
         "gebyrer_pr_butik": bedst.gebyrer,
-        "muligheder": {m.navn: {"i_alt": m.i_alt, "mangler": m.mangler, "under_minimum": m.under_minimum} for m in muligheder},
+        "muligheder": {m.navn: {"i_alt": m.i_alt, "mangler": m.mangler, "under_minimum": m.under_minimum, "usikre": m.usikre} for m in muligheder},
+        "tjek_foerst": bedst.usikre,  # usikre match i den anbefalede løsning: søg igen, før kurven fyldes
         "forklaring": forklaring,
     }

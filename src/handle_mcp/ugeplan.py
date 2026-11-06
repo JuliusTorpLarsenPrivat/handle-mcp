@@ -86,6 +86,12 @@ TRIN 3: PRISEN
 8. Følg `anbefaling` fra sammenlign_liste: én butik, eller begge, når det samlet er billigst med
    levering, poser, pakning og minimumskøb. Del aldrig for en lille besparelse, som gebyrerne
    æder. Er totalen over ugens budget, så find konkrete billigere udskiftninger og nævn dem.
+   Før du følger anbefalingen: søg igen på alle linjer i `tjek_foerst` (usikre match) med en
+   bedre søgetekst, og kør sammenlign_liste igen. Mangler en butik få varer, men er den
+   ellers klart billigst, så søg efter gode erstatninger netop dér (fx en anden vildfanget
+   fisk), før den droppes. Usikre match tæller med den anden butiks pris, så de hverken gør
+   en butik kunstigt billig eller smider den ud (fundet live: majsmel blev regnet som
+   nakkekoteletter, og Bilka så 430 kr billigere ud end den var).
 9. Gem med gem_madplan (gebyrer = alle gebyrer inkl. poser, valg={"ugebudget_kr": ugens budget}). Ved
    deling: butik="begge" og "butik" på hver vare. Send: butik(ker), total inkl. levering og
    poser mod ugens budget, antal varer, de 3-5 vigtigste valg kort, evt. budgetadvarsel, og

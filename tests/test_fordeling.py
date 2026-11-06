@@ -156,3 +156,28 @@ async def test_ugeplan_forloeb():
     assert "hvor mange aftener" in f and "anbefaling" in f and "KØLESKABET" in f
     assert "5 aftener" in server._ugeplan_tekst("5") and "hvor mange aftener" not in server._ugeplan_tekst("5")
     assert "ugeplan_forloeb" in server.ugeplan()  # prompten har ingen felter og peger på værktøjet
+
+
+def test_usikre_match_taeller_ikke_som_fundet():
+    """Fundet live: Bilka så 430 kr billigere ud, fordi majsmel talte som nakkekoteletter."""
+    nemlig = resultat("nemlig", [("nakkekoteletter", 131), ("kartofler", 45), ("æg", 63)], NEMLIG_GEBYR, 0)
+    bilka = resultat("bilka", [("nakkekoteletter", 28), ("kartofler", 45), ("æg", 62)], BILKA_GEBYR, 0)
+    bilka.linjer[0].sikker = False  # majsmel
+    bilka.linjer[0].valgt.navn = "Majsmel øko"
+    a = find_billigste([nemlig, bilka])
+    # majsmel tæller som nemligs nakkekoteletter-pris (131), ikke 28: Bilka er nu 38 kr dyrere i alt
+    assert a["anbefaling"] == "nemlig"
+    assert a["muligheder"]["bilka"]["i_alt"] == Decimal(131 + 45 + 62 + 78)
+    assert a["muligheder"]["bilka"]["usikre"] == ["bilka: nakkekoteletter → Majsmel øko"]
+
+
+def test_et_usikkert_match_i_hver_butik_giver_stadig_et_fornuftigt_valg():
+    """Fundet live: én usikker linje i hver butik gjorde alle muligheder ugyldige, og en dyrere
+    deling blev valgt med forklaringen "ville koste 0.00 kr mere"."""
+    nemlig = resultat("nemlig", [("kød", 300), ("grønt", 300), ("peber", 8)], NEMLIG_GEBYR, 550)
+    bilka = resultat("bilka", [("kød", 400), ("grønt", 350), ("peber", 9)], BILKA_GEBYR, 500)
+    nemlig.linjer[2].sikker = False
+    bilka.linjer[0].sikker = False
+    a = find_billigste([nemlig, bilka])
+    assert a["anbefaling"] == "nemlig" and a["tjek_foerst"] == ["nemlig: peber → peber"]
+    assert "0.00 kr mere" not in a["forklaring"]

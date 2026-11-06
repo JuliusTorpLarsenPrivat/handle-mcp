@@ -227,3 +227,39 @@ def test_efterligning_er_ikke_varen(navn):
     """Fundet i test 3: "Græskinspireret yoghurt" blev valgt til græsk yoghurt."""
     assert point("græsk yoghurt", Vare("x", "1", navn, Decimal(20))) <= 0.5
     assert point("græsk yoghurt", Vare("x", "2", "Græsk yoghurt 10% øko.", Decimal(30))) == 1
+
+
+# --- fundet ved live-tjek af butiksvalget (test 4-listen) ----------------------------------
+
+
+@pytest.mark.parametrize(
+    "soegning, forkert",
+    [
+        ("Nakkekoteletter 400 g øko", Vare("b", "1", "Majsmel øko", Decimal(28), maengde="400 g")),
+        ("Kværnsalt 500 g Jozo", Vare("b", "2", "Ketchup u. tilsat sukker og salt", Decimal(20), maengde="500 g")),
+        ("Avocado i net 700 g øko", Vare("b", "3", "Kernerugbrød øko", Decimal(25), maengde="700 g")),
+    ],
+)
+def test_maengde_og_oeko_alene_er_ikke_et_match(soegning, forkert):
+    assert point(soegning, forkert) < 0.5
+
+
+def test_maengde_midt_i_soegningen():
+    from handle_mcp.maengde import behov
+
+    tekst, b = behov("Nakkekoteletter 400 g øko")
+    assert tekst == "Nakkekoteletter øko" and str(b) == "400 g"
+
+
+def test_kasse_med_12_daaser_vinder_ikke_over_en_daase():
+    from handle_mcp.sammenlign import rangeret
+
+    kasse = Vare("n", "1", "Hakkede tomater øko.", Decimal(156), maengde="12 x 400 g", enhedspris=Decimal("32.5"), enhed="kg")
+    daase = Vare("n", "2", "Hakkede tomater øko.", Decimal("13.82"), maengde="400 g", enhedspris=Decimal("34.55"), enhed="kg")
+    assert rangeret("hakkede tomater øko", [kasse, daase])[0][1].id == "2"
+
+
+def test_procent_skal_passe():
+    """Fundet live: "Chokolade 85%" blev til "Chokolade 50%", da tal blev ignoreret."""
+    assert point("chokolade 85%", Vare("n", "1", "Chokolade 50%", Decimal(20), maengde="100 g")) <= 0.5
+    assert point("chokolade 85%", Vare("n", "2", "Chokolade 85%", Decimal(40), maengde="100 g")) == 1
