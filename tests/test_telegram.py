@@ -384,3 +384,17 @@ async def test_claude_der_er_gaaet_i_staa_regnes_ikke_som_lyttende(tg):
     tg.besked(1, "vi har agurk og mel")
     await telegram.hent_og_haandter(0)
     assert tg.sendt[-1] == (1, telegram.IKKE_LYTTER)
+
+
+@pytest.mark.parametrize(
+    "tekst",
+    [
+        "Vi vil ikke spise fisk fra frost. Desuden vil vi ikke spise opdrættet fisk - gem i profilindstillinger",
+        "Vi vil kun have rådyr om lørdagen",
+        "gem i profilen at vi kun vil have vildfanget fisk",
+    ],
+)
+def test_oensker_fra_demoen_fanges(tekst):
+    from handle_mcp import profil
+
+    assert profil.er_huskeoenske(tekst)

@@ -9,6 +9,7 @@ import pytest
 
 from handle_mcp.butikker import bilka, nemlig
 from handle_mcp.vagt import ny_klient
+from datetime import datetime
 
 
 # --- nemlig -------------------------------------------------------------------
@@ -161,3 +162,53 @@ async def test_bilka_login_sender_aldrig_kurv_cookie(monkeypatch):
     b._klient.cookies.set("cart", "gammel-kurv", domain="api.bilkatogo.dk")
     await b.log_ind()
     assert b._jwt == "jwt"
+
+
+def test_bilka_vare_der_ikke_kan_leveres_til_adressen_springes_over():
+    """Fundet i brug: fersk laks (blockbit 12) kunne ikke bestilles til adressen (blockbit 7)."""
+    assert bilka.vare_fra_hit({**bilka_hit(), "blockbit": 12}, "9", adresse_blockbit=7) is None
+    assert bilka.vare_fra_hit({**bilka_hit(), "blockbit": 0}, "9", adresse_blockbit=7) is not None
+    assert bilka.vare_fra_hit({**bilka_hit(), "blockbit": 8}, "9", adresse_blockbit=7) is not None
+
+
+class FalskBilkaKurv:
+    """Bilka, der lægger en fjernet vare tilbage, når der senere lægges noget andet i."""
+
+    def __init__(self):
+        self.kurv = {"1": 1, "2": 1}
+        self.fjernet_igen = []
+
+    def __call__(self, request):
+        if request.url.path.endswith("ChangeLineCount"):
+            vid, n = request.url.params["productId"], int(request.url.params["count"])
+            if n == 0:
+                self.fjernet_igen.append(vid)
+                self.kurv.pop(vid, None)
+            else:
+                self.kurv[vid] = n
+                if vid == "3":
+                    self.kurv["1"] = 1  # fejlen: den fjernede vare kommer tilbage
+            return httpx.Response(200, json={"productAmount": n})
+        if request.url.path.endswith("/Cart"):
+            linjer = [{"product": {"objectID": k, "name": f"vare {k}"}, "quantity": v, "amount": 1000} for k, v in self.kurv.items()]
+            return httpx.Response(200, json={"stat": {}, "lines": [{"headline": "Kød", "lines": [{"orderlines": linjer}]}], "deliveryAddress": {"dawa_uid": "x"}})
+        return httpx.Response(404)
+
+
+async def test_bilka_fjernet_vare_der_kommer_tilbage_fjernes_igen(monkeypatch):
+    falsk = FalskBilkaKurv()
+    b = bilka.Bilka()
+    b._klient = ny_klient(transport=httpx.MockTransport(falsk))
+    b._jwt, b._jwt_udloeber = "jwt", datetime.max.replace(tzinfo=bilka.DK)
+    await b.saet_antal({"1": 0})
+    assert "1" not in falsk.kurv
+    # en anden proces (fx lytteren) har en anden instans: huskes via filen
+    b2 = bilka.Bilka()
+    b2._klient, b2._jwt, b2._jwt_udloeber = b._klient, "jwt", b._jwt_udloeber
+    res = await b2.saet_antal({"3": 1})
+    assert "1" not in falsk.kurv and set(falsk.kurv) == {"2", "3"}
+    assert any(r.id == "1" and r.ok and "igen" in r.besked for r in res)
+    # lægges varen bevidst i igen, glemmes den som fjernet
+    await b2.saet_antal({"1": 2})
+    await b2.saet_antal({"4": 1})
+    assert falsk.kurv["1"] == 2

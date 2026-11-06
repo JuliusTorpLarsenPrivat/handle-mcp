@@ -335,7 +335,7 @@ async def _godkendelse(chat_id: str, navn: str, tekst: str) -> bool:
     return True
 
 
-CLAUDE_LYTTER_SEK = 5 * 60  # har Claude ikke været i gang i 5 min, lytter den ikke
+CLAUDE_LYTTER_SEK = 2 * 60  # Claude kalder værktøjer hvert minut, mens den arbejder (5 min var for længe: fundet i demoen)
 IKKE_LYTTER = "Modtaget. Claude er ikke i gang lige nu. Skal det videre nu, så skriv fortsæt i Claude-chatten."
 
 

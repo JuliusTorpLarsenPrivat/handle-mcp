@@ -9,6 +9,14 @@ Login sker i tre trin:
 Søgning går til Algolia (en søgetjeneste), med den offentlige søgenøgle fra hjemmesiden.
 
 Fælde: Send aldrig en 'cart'-cookie med ved login. Så erstatter Bilka kontoens kurv med den.
+
+Fundet i brug (uge 48):
+- Nogle varer findes i butikkens sortiment, men kan ikke leveres til adressen ("Du kan desværre
+  ikke bestille dette produkt til HD Odense"), fx fersk laks. Varen og adressen har hver en
+  `blockbit`, og har de en bit til fælles, kan varen ikke bestilles. Sådanne varer vises ikke.
+- En fjernet vare kom tilbage i kurven, da der senere blev lagt andet i (lytteren og serveren er
+  to processer med hver sin session). Fjernede varer huskes derfor i bilka-fjernet.json og
+  fjernes igen, hvis de dukker op.
 """
 
 from __future__ import annotations
@@ -23,6 +31,7 @@ from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 from handle_mcp import login
+from handle_mcp.lokal import laes, skriv
 from handle_mcp.butikker import ButikFejl
 from handle_mcp.data import AntalResultat, Kurv, Kurvlinje, Leveringstid, Ordre, Vare
 from handle_mcp.vagt import ny_klient, send
@@ -35,6 +44,14 @@ ALGOLIA = "https://f9vbjlr1bk-dsn.algolia.net/1/indexes/*/queries"
 ALGOLIA_HEADERS = {"x-algolia-application-id": "F9VBJLR1BK", "x-algolia-api-key": "1deaf41c87e729779f7695c00f190cc9"}
 ALGOLIA_INDEKS = "prod_BILKATOGO_PRODUCTS"
 DK = ZoneInfo("Europe/Copenhagen")
+FJERNET_FIL = "bilka-fjernet"
+FJERNET_HUSKES = 3 * 24 * 3600  # sekunder
+
+
+def tid_nu() -> float:
+    import time as _t
+
+    return _t.time()
 GEBYRGRUPPER = {"Emballage", "Services"}  # kurvgrupper, der er gebyrer og ikke varer
 IKKE_HJEMLEVERING = "Kurven er sat til afhentning. Vælg hjemlevering på bilkatogo.dk."
 
@@ -48,11 +65,15 @@ def er_hjemlevering(adresse: dict) -> bool:
     return bool(adresse.get("dawa_uid") or adresse.get("recipient_name"))
 
 
-def vare_fra_hit(hit: dict, sid: str) -> Vare | None:
+def kan_leveres(hit: dict, adresse_blockbit: int) -> bool:
+    return not (int(hit.get("blockbit") or 0) & int(adresse_blockbit or 0))
+
+
+def vare_fra_hit(hit: dict, sid: str, adresse_blockbit: int = 0) -> Vare | None:
     """Ét Algolia-hit. Pris og lager står pr. butik under storeData[sid]. Top-feltet 'price'
     er normalprisen, storeData-prisen er det du betaler (tilbud medregnet)."""
     butik = (hit.get("storeData") or {}).get(sid)
-    if not butik:
+    if not butik or not kan_leveres(hit, adresse_blockbit):
         return None
     nu, normal = kr(butik.get("price")), kr(hit.get("price"))
     tilbud = butik.get("offerDescription") or None
@@ -191,7 +212,8 @@ class Bilka:
         return await self._shop("GET", "shop/v6/Cart", {"extra": "deliveryAddress,deliveryDate"})
 
     async def _algolia(self, tekst: str, antal: int, kun_tilbud: bool = False) -> list[Vare]:
-        sid = str(((await self._kurv_json()).get("deliveryAddress") or {}).get("sid") or "")
+        adresse = (await self._kurv_json()).get("deliveryAddress") or {}
+        sid = str(adresse.get("sid") or "")
         if not sid:
             raise ButikFejl("Ingen leveringsadresse i BilkaToGo. Vælg hjemlevering på bilkatogo.dk.")
         filtre = f"isInAssortmentIn:{sid} AND nonsearchable:false"
@@ -203,7 +225,7 @@ class Bilka:
                 "hitsPerPage": antal,
                 "removeWordsIfNoResults": "allOptional",  # færre ord, hvis alle ord giver 0 hits
                 "filters": filtre,
-                "attributesToRetrieve": json.dumps(["name", "brand", "gtin", "netcontent", "price", f"storeData.{sid}"]),
+                "attributesToRetrieve": json.dumps(["name", "brand", "gtin", "netcontent", "price", "blockbit", f"storeData.{sid}"]),
             }
         )
         svar = await send(self._klient, "POST", ALGOLIA, headers=ALGOLIA_HEADERS, json={"requests": [{"indexName": ALGOLIA_INDEKS, "params": params}]})
@@ -213,7 +235,7 @@ class Bilka:
             hits = svar.json()["results"][0]["hits"]
         except (KeyError, IndexError, TypeError, ValueError):
             raise ButikFejl("BilkaToGos søgning har ændret format.") from None
-        return [v for h in hits if (v := vare_fra_hit(h, sid))]
+        return [v for h in hits if (v := vare_fra_hit(h, sid, adresse.get("blockbit") or 0))]
 
     async def soeg(self, tekst: str, antal: int = 10) -> list[Vare]:
         return await self._algolia(tekst, antal)
@@ -238,7 +260,29 @@ class Bilka:
             besked = " ".join(m for m in (svar.get("message"), svar.get("offerLimitMessage")) if m) or None
             ok = faktisk == n
             resultater.append(AntalResultat(vare_id, n, faktisk if isinstance(faktisk, int) else None, ok, besked or (None if ok else f"Bilka satte antallet til {faktisk}.")))
-        return resultater
+        return resultater + await self._hold_fjernede(antal)
+
+    async def _hold_fjernede(self, antal: dict[str, int]) -> list[AntalResultat]:
+        """Husk varer sat til 0, og fjern dem igen, hvis Bilka har lagt dem tilbage."""
+        fjernet = {k: v for k, v in laes(FJERNET_FIL).items() if v > tid_nu() - FJERNET_HUSKES}
+        for vare_id, n in antal.items():
+            if n == 0:
+                fjernet[str(vare_id)] = tid_nu()
+            else:
+                fjernet.pop(str(vare_id), None)
+        try:
+            skriv(FJERNET_FIL, fjernet)
+        except OSError:
+            pass
+        if not fjernet:
+            return []
+        tilbage = [ln.id for ln in (await self.kurv()).linjer if ln.id in fjernet]
+        ekstra = []
+        for vare_id in tilbage:
+            svar = await self._shop("GET", "shop/v6/ChangeLineCount", {"productId": vare_id, "count": 0, "fullCart": 0})
+            ok = svar.get("productAmount") == 0
+            ekstra.append(AntalResultat(vare_id, 0, svar.get("productAmount"), ok, "Bilka havde lagt den fjernede vare i kurven igen. Den er fjernet igen." if ok else "Bilka lagde den fjernede vare i kurven igen, og den kunne ikke fjernes. Fjern den i appen."))
+        return ekstra
 
     async def leveringstider(self, dage: int = 7) -> list[Leveringstid]:
         """Bilka har ingen pris pr. tid: gebyret er fast og står i kurven."""
