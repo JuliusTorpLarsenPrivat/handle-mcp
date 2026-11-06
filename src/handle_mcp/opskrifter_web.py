@@ -119,15 +119,19 @@ def laes_side(side: str, link: str, kilde: str) -> WebOpskrift:
             yield_ = re.search(r'"recipeYield"\s*:\s*("[^"]*"|\d+|\[[^\]]*\])', side)
             tid = re.search(r'"totalTime"\s*:\s*"([^"]+)"', side)
             return _byg(None, kilde, link, json.loads(yield_.group(1)) if yield_ else None, tid.group(1) if tid else None, ingr, side)
-    # 4. liste under "Ingredienser"
-    i = side.find(">Ingredienser<")
-    if i >= 0:
-        rest = side[i:]
-        slut = re.search(r">\s*(Fremgangsmåde|Sådan gør du|Tilberedning|Fremgangsmaade)\s*<", rest)
+    # 4. under en overskrift med "Ingredienser": en liste (DR Mad) eller et afsnit med én
+    #    ingrediens pr. linje (WordPress-blogs, fx Madens Verdens "Ingredienser til dyreryg")
+    m = re.search(r">\s*Ingredienser\s*<", side) or re.search(r"<h[1-6][^>]*>(?:(?!</h[1-6]>).)*Ingredienser(?:(?!</h[1-6]>).)*</h[1-6]>", side, re.S | re.I)
+    if m:
+        rest = side[m.end():]
+        slut = re.search(r">\s*(Fremgangsmåde|Fremgangsmaade|Sådan gør du|Tilberedning|Anretning|Kommentarer)[^<]*<", rest)
         afsnit = rest[: slut.start()] if slut else rest[:20000]
         ingr = [_tekst(x) for x in re.findall(r"<li[^>]*>(.*?)</li>", afsnit, re.S)]
+        if not ingr:  # afsnit med linjeskift i stedet for en liste
+            for p in re.findall(r"<p[^>]*>(.*?)</p>", afsnit, re.S):
+                ingr += [_tekst(x) for x in re.split(r"<br\s*/?>", p) if _tekst(x)]
         if ingr:
-            personer = re.search(r"(\d+)\s*(?:personer|pers\.|portioner)", _tekst(side[:i]))
+            personer = re.search(r"(\d+)\s*(?:personer|pers\.|portioner)", _tekst(side[: m.start()]))
             return _byg(None, kilde, link, personer.group(1) if personer else None, None, ingr, side)
     raise OpskriftFejl("Fandt ingen ingrediensliste på siden. Er det et link til en enkelt opskrift?")
 

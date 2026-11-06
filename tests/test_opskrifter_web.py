@@ -18,9 +18,16 @@ LISTE = """<p>4 personer</p><h2><div>Ingredienser</div></h2><ul><li>• 500 g ka
 <h2><div>Fremgangsmåde</div></h2><ul><li>Rør farsen</li></ul><meta property="og:title" content="Frikadeller som mor lavede dem">"""
 
 
+AFSNIT = """<meta property="og:title" content="Dyreryg i ovn"><p>Opskriften er til 6-8 personer.</p>
+<h3 class="wp-block-heading">Ingredienser til dyreryg</h3><p>2 kilo dyreryg<br />1 lille potte <a href="/rosmarin/">rosmarin</a><br />15 enebær</p>
+<h3>Ingredienser til sovsen</h3><p>4 deciliter fløde<br/>Salt</p><h3 class="wp-block-heading">Fremgangsmåde</h3><ol><li>Steg ryggen</li></ol>"""
+
+
 @pytest.mark.parametrize(
     "side, navn, personer, tid, ingr",
     [
+        # fundet i brug: Madens Verden "Dyreryg i ovn" har ingredienserne som afsnit med linjeskift
+        (AFSNIT, "Dyreryg i ovn", 8, None, ["2 kilo dyreryg", "1 lille potte rosmarin", "15 enebær", "4 deciliter fløde", "Salt"]),
         (JSONLD, "Baronens gryderet", 4, 75, ["500 g kalvemørbrad (i mindre tern)", "3 fed hvidløg & salt"]),
         (MICRODATA, "Kylling i Karry", 4, None, ["400 g kyllingefilet", "1 løg, finthakket"]),
         (INDLEJRET, "Lasagne - Klassisk opskrift med oksekød", 4, 60, ["25 g smør", "500 g hakket oksekød"]),
