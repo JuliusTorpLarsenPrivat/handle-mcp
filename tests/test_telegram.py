@@ -20,6 +20,10 @@ class FalskTelegram:
 
     def __init__(self):
         self.sendt: list[tuple[int, str]] = []
+        self.html: list[str] = []  # beskeder sendt med parse_mode=HTML
+        self.fastgjort: dict[int, int] = {}  # chat -> fastgjort message_id
+        self.naeste_besked = 100
+        self.loesnet = 0
         self.ventende: list[dict] = []
         self.naeste_id = 1
 
@@ -37,7 +41,17 @@ class FalskTelegram:
             return httpx.Response(200, json={"ok": True, "result": {"username": "vores_handlebot"}})
         if metode == "sendMessage":
             self.sendt.append((data["chat_id"], data["text"]))
-            return httpx.Response(200, json={"ok": True, "result": {}})
+            if data.get("parse_mode") == "HTML":
+                self.html.append(data["text"])
+            self.naeste_besked += 1
+            return httpx.Response(200, json={"ok": True, "result": {"message_id": self.naeste_besked}})
+        if metode == "pinChatMessage":
+            self.fastgjort[data["chat_id"]] = data["message_id"]
+            return httpx.Response(200, json={"ok": True, "result": True})
+        if metode == "unpinChatMessage":
+            self.fastgjort.pop(data["chat_id"], None)
+            self.loesnet += 1
+            return httpx.Response(200, json={"ok": True, "result": True})
         if metode == "getUpdates":
             nye = [u for u in self.ventende if u["update_id"] >= data.get("offset", 0)]
             return httpx.Response(200, json={"ok": True, "result": nye})
@@ -422,7 +436,7 @@ async def test_vare_der_ikke_kom_i_kurven_giver_besked_om_erstatning(tg, monkeyp
     skriv("claude-aktiv", {"sidst": time.time() if claude_i_gang else 0})
     tg.besked(1, "bestil")
     await telegram.hent_og_haandter(0)
-    sidste = tg.sendt[-1][1]
+    sidste = next(t for _, t in reversed(tg.sendt) if "godkendte" in t)  # ugemenuen kommer efter
     assert "HD Odense" in sidste and "betal i appen" not in sidste and "Vent med at betale" in sidste
     assert (telegram.ERSTATNING_LYTTER in sidste) is claude_i_gang
     assert (telegram.ERSTATNING_IKKE_LYTTER in sidste) is not claude_i_gang
@@ -467,3 +481,73 @@ async def test_bestil_efter_rettelse_men_dyrere_plan_kraever_nyt_bestil(tg, monk
     await telegram.hent_og_haandter(0)
     ny = await server.gem_madplan("nemlig", ["Ons"], [{"vare_id": "a", "navn": "a", "antal": 1, "pris": 50.0}, {"vare_id": "l", "navn": "laks", "antal": 1, "pris": 90.0}])
     assert "bed om et nyt bestil" in ny["bestil_venter"]
+
+
+
+# --- ugemenuen med opskrifterne (Julius: "nemt at få fat i opskriften om onsdagen") ----------
+
+
+async def test_ugemenu_sendes_og_fastgoeres_naar_kurven_fyldes(tg, monkeypatch):
+    butik = FalskButik()
+    monkeypatch.setattr(server, "hent_butik", lambda _n: butik)
+    par(tg, 1)
+    await telegram.hent_og_haandter(0)
+    links = {"Tir: Nakkekoteletter": "https://www.valdemarsro.dk/nakkekoteletter/", "Ons: Frikadeller": "https://www.dr.dk/mad/opskrift/frikadeller"}
+    await server.gem_madplan(
+        "nemlig",
+        ["Man: Rester af chili", "Tir: Nakkekoteletter med kartofler", "Ons: Frikadeller <med> rødbeder"],
+        [{"vare_id": "1", "navn": "x", "antal": 1, "pris": 1.0}],
+        valg={"opskrifter": links},
+    )
+    tg.besked(1, "bestil")
+    await telegram.hent_og_haandter(0)
+    (menu,) = tg.html
+    # rettens navn er linket (kort besked), rester har intet link, og HTML-tegn er escapet
+    assert '<a href="https://www.valdemarsro.dk/nakkekoteletter/">Tir: Nakkekoteletter med kartofler</a>' in menu
+    assert '<a href="https://www.dr.dk/mad/opskrift/frikadeller">Ons: Frikadeller &lt;med&gt; rødbeder</a>' in menu
+    assert "\nMan: Rester af chili\n" in menu and "https://" not in menu.split("Man:")[1].split("\n")[0]
+    assert 1 in tg.fastgjort
+    assert not await telegram.send_ugemenu_hvis_mangler()  # kun én gang pr. plan
+
+
+async def test_ny_ugemenu_loesner_den_gamle(tg, monkeypatch):
+    monkeypatch.setattr(server, "hent_butik", lambda _n: FalskButik())
+    par(tg, 1)
+    await telegram.hent_og_haandter(0)
+    for uge in ("Man: Lasagne", "Man: Tacos"):
+        await server.gem_madplan("nemlig", [uge], [{"vare_id": "1", "navn": "x", "antal": 1, "pris": 1.0}])
+        tg.besked(1, "bestil")
+        await telegram.hent_og_haandter(0)
+    assert len(tg.html) == 2 and "Tacos" in tg.html[-1]
+    assert tg.loesnet == 1 and list(tg.fastgjort) == [1]  # den gamle menu blev løsnet, den nye fastgjort
+
+
+@pytest.mark.parametrize("tekst", ["menu", "Menu?", "ugens menu", "opskrift"])
+async def test_menu_sender_ugemenuen_igen(tg, monkeypatch, tekst):
+    monkeypatch.setattr(server, "hent_butik", lambda _n: FalskButik())
+    par(tg, 1)
+    await telegram.hent_og_haandter(0)
+    await server.gem_madplan("nemlig", ["Ons: Frikadeller"], [{"vare_id": "1", "navn": "x", "antal": 1, "pris": 1.0}])
+    tg.besked(1, "bestil")
+    await telegram.hent_og_haandter(0)
+    tg.besked(1, tekst)
+    assert (await telegram.hent_og_haandter(0))[-1] == "ugemenu sendt til Maria"
+    assert len(tg.html) == 2
+
+
+async def test_menu_uden_madplan(tg):
+    par(tg, 1)
+    await telegram.hent_og_haandter(0)
+    tg.besked(1, "menu")
+    await telegram.hent_og_haandter(0)
+    assert tg.sendt[-1] == (1, "Der er ingen madplan i kurven lige nu.")
+
+
+async def test_ugemenu_naar_claude_selv_fyldte_kurven(tg, monkeypatch):
+    """Fx "bestil" lige efter en rettelse: Claude fylder kurven, og lytteren sender menuen."""
+    monkeypatch.setattr(server, "hent_butik", lambda _n: FalskButik())
+    par(tg, 1)
+    await telegram.hent_og_haandter(0)
+    kode = (await server.gem_madplan("nemlig", ["Ons: Frikadeller"], [{"vare_id": "1", "navn": "x", "antal": 1, "pris": 1.0}]))["kode"]
+    await server.fyld_kurv_fra_madplan(kode, f"OK {kode}")
+    assert await telegram.send_ugemenu_hvis_mangler() and len(tg.html) == 1

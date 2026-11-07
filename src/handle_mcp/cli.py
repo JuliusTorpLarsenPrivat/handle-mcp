@@ -94,6 +94,11 @@ async def _telegram_lyt(timer: float) -> int:
                 print(f"{time.strftime('%H:%M')} Ny kode indlæst: {len(nye)} moduler", flush=True)
         except Exception as fejl:  # noqa: BLE001  en tastefejl må ikke stoppe lytteren
             print(f"{time.strftime('%H:%M')} Ny kode kunne ikke indlæses, kører videre: {fejl}", flush=True)
+        try:  # Claude kan selv have fyldt kurven (fx "bestil" lige efter en rettelse)
+            if await telegram.send_ugemenu_hvis_mangler():
+                print(f"{time.strftime('%H:%M')} Ugemenu sendt og fastgjort", flush=True)
+        except Exception as fejl:  # noqa: BLE001
+            print(f"{time.strftime('%H:%M')} Ugemenu kunne ikke sendes: {fejl}", flush=True)
         if telegram.ugen_er_afsluttet(start):
             print(f"{time.strftime('%H:%M')} Ugens plan er afsluttet. Lytteren stopper.", flush=True)
             return 0

@@ -63,6 +63,7 @@ class Madplan:
     historik: list[str] = field(default_factory=list)
     # ret → link til opskriften, så en ret kan gemmes som favorit bagefter (ældre planer: tom)
     opskrifter: dict[str, str] = field(default_factory=dict)
+    menu_sendt: bool = False  # ugemenuen med links er sendt og fastgjort i Telegram
 
     @property
     def varer_i_alt(self) -> float:
@@ -299,3 +300,39 @@ def _bestil_der_venter(p: Madplan, budget: float | None) -> dict:
         "bestil_venter": f'{v.get("navn")} skrev "bestil" efter sin rettelse, men den rettede plan er dyrere '
         f"({p.i_alt:.0f} kr mod {gammel:.0f} kr) eller over budget. Send den nye total og bed om et nyt bestil."
     }
+
+
+# --- ugemenuen (Julius: "når det bliver onsdag, skal opskriften være nem at få fat i") ------
+
+
+def seneste_fyldte(dage: int = 10) -> Madplan | None:
+    """Den nyeste plan, hvis kurv er fyldt inden for `dage` dage."""
+    graense = datetime.now(TIDSZONE).timestamp() - dage * 86400
+    fyldte = [p for p in _alle() if p.status == "kurv fyldt" and datetime.fromisoformat(p.oprettet).timestamp() >= graense]
+    return fyldte[-1] if fyldte else None
+
+
+def _dag(ret: str) -> str:
+    return ret.split(":", 1)[0].strip().lower() if ":" in ret else ""
+
+
+def link_til(p: Madplan, ret: str) -> str | None:
+    """Opskriftens link til en ret: samme tekst, en kortere udgave ("Tir: Lasagne" til "Tir:
+    Lasagne med salat") eller samme dag."""
+    if ret in p.opskrifter:
+        return p.opskrifter[ret]
+    for noegle_, link in p.opskrifter.items():
+        if noegle_.lower() in ret.lower() or ret.lower() in noegle_.lower():
+            return link
+    dag = _dag(ret)
+    samme_dag = [link for noegle_, link in p.opskrifter.items() if dag and _dag(noegle_) == dag]
+    return samme_dag[0] if len(samme_dag) == 1 else None
+
+
+def marker_menu_sendt(kode: str) -> None:
+    planer = _alle()
+    for p in planer:
+        if p.kode == kode:
+            p.menu_sendt = True
+            p.historik.append(f"{_nu()} ugemenu sendt")
+    _gem_alle(planer)

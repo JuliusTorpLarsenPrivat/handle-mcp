@@ -355,6 +355,10 @@ async def _godkendelse(chat_id: str, navn: str, tekst: str) -> bool:
     for anden in chats():
         await _svar(anden, besked)
     _gem_besked("handle-botten", besked)  # så Claude kan se, at kurven er fyldt
+    try:
+        await send_ugemenu_hvis_mangler()  # menuen med opskrifterne, fastgjort øverst
+    except Exception as fejl:  # noqa: BLE001  kurven er fyldt; menuen må ikke vælte det
+        log.warning("Ugemenuen kunne ikke sendes: %s", fejl)
     return True
 
 
@@ -396,6 +400,12 @@ async def haandter(opdatering: dict) -> str | None:
         return "besked fra ukendt chat ignoreret"
     if await _godkendelse(chat_id, navn, tekst):
         return f"godkendelse fra {navn} behandlet"
+    if " ".join(tekst.lower().strip(" ?!.").split()) in MENU_ORD:
+        if p := madplan.seneste_fyldte():
+            await send_ugemenu(p, fastgoer=False)
+            return f"ugemenu sendt til {navn}"
+        await _svar(chat_id, "Der er ingen madplan i kurven lige nu.")
+        return f"ingen ugemenu til {navn}"
     husket = False
     if profil.er_huskeoenske(tekst):
         # Gemmes i profilen her, uden Claude: så er ønsket med i alle kommende madplaner, også
@@ -424,3 +434,69 @@ async def hent_og_haandter(vent_sekunder: int = 25) -> list[str]:
         if h := await haandter(o):
             haendelser.append(h)
     return haendelser
+
+
+# --- ugemenuen: fastgjort øverst i chatten, med opskriften bag hver ret ----------------------
+# Julius: "når det bliver onsdag og madplanen siger frikadeller, skal opskriften være nem at
+# få fat i", og "med hyperlinks, så beskeden ikke bliver hammer lang". Ligger beskeden i
+# Telegram, virker den også, når pc'en er slukket.
+
+MENU_ORD = {"menu", "ugens menu", "menuen", "opskrift", "opskrifter", "madplan", "madplanen"}
+
+
+def menu_tekst(p: madplan.Madplan) -> str:
+    """Ugens menu som Telegram-HTML: rettens navn er et link til opskriften."""
+    import html
+
+    linjer = [f"<b>Ugens menu</b> ({p.kode})"]
+    for ret in p.retter:
+        link = madplan.link_til(p, ret)
+        navn = html.escape(ret)
+        linjer.append(f'<a href="{html.escape(link, quote=True)}">{navn}</a>' if link else navn)
+    if any(madplan.link_til(p, r) for r in p.retter):
+        linjer.append("\nTryk på en ret for at se opskriften.")
+    return "\n".join(linjer)
+
+
+async def send_ugemenu(p: madplan.Madplan, fastgoer: bool = True) -> int:
+    """Send menuen til alle tilkoblede og fastgør den øverst (den gamle menu løsnes). Giver antal."""
+    d = _tilstand()
+    fastgjorte = d.setdefault("fastgjort_menu", {})
+    n = 0
+    for chat_id in chats():
+        try:
+            besked = await api(
+                "sendMessage",
+                chat_id=int(chat_id),
+                text=menu_tekst(p)[:MAKS_TEGN],
+                parse_mode="HTML",
+                link_preview_options={"is_disabled": True},
+            )
+            n += 1
+            if fastgoer and isinstance(besked, dict) and besked.get("message_id"):
+                if gammel := fastgjorte.get(chat_id):
+                    try:
+                        await api("unpinChatMessage", chat_id=int(chat_id), message_id=int(gammel))
+                    except TelegramFejl:
+                        pass  # fx slettet af brugeren
+                await api("pinChatMessage", chat_id=int(chat_id), message_id=int(besked["message_id"]), disable_notification=True)
+                fastgjorte[chat_id] = besked["message_id"]
+        except TelegramFejl as fejl:
+            log.warning("Kunne ikke sende ugemenuen: %s", fejl)
+    d2 = _tilstand()  # lytteren kan have skrevet offset imens
+    d2["fastgjort_menu"] = fastgjorte
+    skriv("telegram", d2)
+    _gem_besked(SENDT_AF, f"Ugens menu ({p.kode}) sendt og fastgjort", laest=True)
+    return n
+
+
+async def send_ugemenu_hvis_mangler() -> bool:
+    """Send menuen for den nyeste fyldte kurv, hvis den ikke er sendt. Kaldes af lytteren og
+    efter "bestil", så den også kommer, når Claude selv har fyldt kurven."""
+    p = madplan.seneste_fyldte()
+    if not p or p.menu_sendt or not chats():
+        return False
+    if await send_ugemenu(p):
+        madplan.marker_menu_sendt(p.kode)
+        return True
+    return False

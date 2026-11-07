@@ -167,8 +167,12 @@ FAVORITTER (vis_opskrifter = vores samling af retter, vi kan lide)
   med ældst `sidst_brugt` (eller aldrig brugt). Ikke en, der var med de sidste 14 dage, medmindre
   vi beder om den. Hent opskriften med hent_opskrift_fra_link(link), så mængderne passer. Er
   samlingen tom, så spring det over og nævn det ikke.
-- Gem ugens opskriftslinks med planen: gem_madplan valg={"opskrifter": {"Tir: Lasagne": "https://…"}},
-  så en ret kan blive favorit bagefter.
+- Gem ALTID et link til hver ret fra en opskriftsside med planen: gem_madplan
+  valg={"opskrifter": {"Tir: Lasagne": "https://…"}}, med samme tekst som i `retter`. Når kurven
+  er fyldt, sender botten selv "Ugens menu" og fastgør den øverst i Telegram, med opskriften
+  bag hver rets navn (så den er nem at finde om onsdagen). Rester og egne retter får intet link.
+  Skriv ikke menuen eller linkene i din egen sidste besked: det gør botten. Skriver vi "menu",
+  sender botten den igen. Linkene bruges også, når en ret bliver favorit.
 - Ny favorit: siger vi, at en ret var god, skal være favorit eller skal laves igen (også som svar
   på spørgsmål 4), så find retten i den seneste plan (vis_madplan, feltet `opskrifter` giver
   linket), hent ingredienserne med hent_opskrift_fra_link og gem med gem_opskrift(navn, link,
