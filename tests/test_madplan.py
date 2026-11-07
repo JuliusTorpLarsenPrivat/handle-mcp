@@ -240,3 +240,32 @@ async def test_prompten_har_ingen_felter():
 async def test_ukendt_valg_til_gem_madplan(butik):
     with pytest.raises(ToolError, match="Ukendte valg: farve"):
         await server.gem_madplan("nemlig", ["Man: Laks"], LINJER, valg={"farve": 1})
+
+
+# --- favoritter (Julius: byg det, men tilføj ingen favoritter) -------------------------------
+
+
+async def test_planen_husker_opskriftslinks(butik):
+    link = "https://www.valdemarsro.dk/lasagne/"
+    gemt = await server.gem_madplan("nemlig", ["Tir: Lasagne"], LINJER, valg={"opskrifter": {"Tir: Lasagne": link}})
+    assert gemt["opskrifter"] == {"Tir: Lasagne": link}
+    assert (await server.vis_madplan(gemt["kode"]))["opskrifter"] == {"Tir: Lasagne": link}
+    with pytest.raises(ToolError, match="https-link"):
+        await server.gem_madplan("nemlig", ["Tir: Lasagne"], LINJER, valg={"opskrifter": {"Tir: Lasagne": "lasagne"}})
+
+
+async def test_favorit_markeres_brugt_naar_kurven_fyldes(butik):
+    from datetime import date
+
+    from handle_mcp import samling
+
+    await server.gem_opskrift("Lasagne", link="https://www.valdemarsro.dk/lasagne/", tags=["hverdag"])
+    await server.gem_opskrift("Shakshuka")
+    kode = (await server.gem_madplan("nemlig", ["Tir: Lasagne med salat", "Ons: Laks"], LINJER))["kode"]
+    assert samling.hent()[0].sidst_brugt is None  # en plan er ikke spist endnu
+    await server.fyld_kurv_fra_madplan(kode, f"OK {kode}")
+    brugt = {o.navn: (o.sidst_brugt, o.gange_brugt) for o in samling.hent()}
+    assert brugt == {"Lasagne": (date.today().isoformat(), 1), "Shakshuka": (None, 0)}
+    # at gemme favoritten igen (fx nyt tag) beholder historikken
+    await server.gem_opskrift("Lasagne", tags=["hverdag", "gæster"])
+    assert samling.hent(soeg="lasagne")[0].gange_brugt == 1

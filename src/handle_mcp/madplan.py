@@ -61,6 +61,8 @@ class Madplan:
     note: str | None = None
     status: str = "afventer"
     historik: list[str] = field(default_factory=list)
+    # ret → link til opskriften, så en ret kan gemmes som favorit bagefter (ældre planer: tom)
+    opskrifter: dict[str, str] = field(default_factory=dict)
 
     @property
     def varer_i_alt(self) -> float:
@@ -93,7 +95,9 @@ def _gem_alle(planer: list[Madplan]) -> None:
     skriv("madplaner", {"planer": [asdict(p) for p in planer[-GEMTE:]]})
 
 
-def gem(butik: str, retter: list[str], linjer: list[NyLinje], gebyrer: float = 0.0, note: str | None = None) -> Madplan:
+def gem(
+    butik: str, retter: list[str], linjer: list[NyLinje], gebyrer: float = 0.0, note: str | None = None, opskrifter: dict | None = None
+) -> Madplan:
     butik = (tekst(butik, "butik") or "").lower().replace(" + ", "+").replace("nemlig+bilka", "begge").replace("bilka+nemlig", "begge")
     if butik not in (*BUTIKKER, "begge"):
         raise LokalFejl("Butikken skal være nemlig, bilka eller begge.")
@@ -137,6 +141,7 @@ def gem(butik: str, retter: list[str], linjer: list[NyLinje], gebyrer: float = 0
         gebyrer=round(float(gebyrer or 0), 2),
         note=tekst(note, "note", 500),
         historik=[f"{_nu()} oprettet"],
+        opskrifter=_opskrifter(opskrifter),
     )
     # En ny plan erstatter de ventende: så gælder "bestil" altid den seneste version
     for gammel in planer:
@@ -145,6 +150,20 @@ def gem(butik: str, retter: list[str], linjer: list[NyLinje], gebyrer: float = 0
             gammel.historik.append(f"{_nu()} erstattet af {kode}")
     _gem_alle(planer + [plan])
     return plan
+
+
+def _opskrifter(vaerdi: dict | None) -> dict[str, str]:
+    if not vaerdi:
+        return {}
+    if not isinstance(vaerdi, dict) or len(vaerdi) > 14:
+        raise LokalFejl('opskrifter skal være {"ret": "https://…"} for højst 14 retter.')
+    ud = {}
+    for ret, link in vaerdi.items():
+        ret, link = tekst(ret, "ret", 120), tekst(link, "link", 300)
+        if not ret or not link or not link.startswith("https://"):
+            raise LokalFejl(f"Opskriften til {ret!r} skal have et https-link.")
+        ud[ret] = link
+    return ud
 
 
 def hent(kode: str | None = None) -> Madplan:
@@ -169,6 +188,13 @@ def saet_status(kode: str, status: str, besked: str) -> Madplan:
             p.status = status
             p.historik.append(f"{_nu()} {besked}")
             _gem_alle(planer)
+            if status == "kurv fyldt":  # nu bliver retterne spist: favoritterne går på skift
+                from handle_mcp import samling
+
+                try:
+                    samling.marker_brugt(p.retter)
+                except LokalFejl:
+                    pass
             return p
     raise LokalFejl(f"Der er ingen madplan med koden {kode}.")
 
@@ -223,6 +249,7 @@ def sms_tekst(p: Madplan) -> str:
 
 VALG = {
     "ugebudget_kr": "denne uges budget, når det er justeret fra profilens (færre dage, gæster)",
+    "opskrifter": '{"Man: Laks med kartofler": "https://…"}: link til hver rets opskrift (til favoritter)',
 }
 
 
@@ -244,7 +271,7 @@ def gem_fra_vaerktoej(
     budget = valg.get("ugebudget_kr")
     if budget is not None and not (isinstance(budget, (int, float)) and 0 < budget <= 20000):
         raise LokalFejl("ugebudget_kr skal være et tal mellem 0 og 20.000.")
-    p = gem(butik, retter, linjer, gebyrer, note)
+    p = gem(butik, retter, linjer, gebyrer, note, valg.get("opskrifter"))
     budget = budget or profil.hent().ugebudget_kr
     advarsel = f"Planen koster {p.i_alt:.0f} kr, over ugens budget på {budget:.0f} kr." if budget and p.i_alt > budget else None
     return svar(p, advarsel=advarsel, ugens_budget=budget, **_bestil_der_venter(p, budget))

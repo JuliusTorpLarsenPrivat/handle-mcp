@@ -118,3 +118,27 @@ async def test_ukendte_felter_giver_klar_besked():
     with pytest.raises(ToolError, match="Ukendte felter: farve.*Mulige felter: personer"):
         await server.opdater_profil({"farve": "blå"})
     assert "varepraeferencer" in (await server.vis_profil())["felter"]
+
+
+def test_gammel_samling_uden_brugt_felter_kan_laeses():
+    from handle_mcp.lokal import skriv
+
+    skriv("opskrifter", {"opskrifter": [{"navn": "Lasagne", "tilfoejet": "2026-11-01", "felt_fra_fremtiden": 1}]})
+    (o,) = samling.hent()
+    assert (o.navn, o.sidst_brugt, o.gange_brugt) == ("Lasagne", None, 0)
+
+
+@pytest.mark.parametrize(
+    "tekst, forventet",
+    [
+        ("Lasagnen var god, den vil vi have igen", True),
+        ("Gør laksen til en favorit", True),
+        ("Shakshuka ikke igen", True),
+        ("Den skal laves igen", True),
+        ("vi har 2 løg og en halv tærte", False),
+        ("5 aftener fra mandag", False),
+        ("Det var godt", False),
+    ],
+)
+def test_favoritter_fra_telegram_fanges(tekst, forventet):
+    assert profil.er_huskeoenske(tekst) is forventet

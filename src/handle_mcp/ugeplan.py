@@ -19,6 +19,7 @@ FOERSTE_SPOERGSMAAL = (
     "jeg med jer bagefter.\n"
     "2) Hvor mange aftener skal vi have mad til, og fra hvilken dag?\n"
     "3) Noget særligt denne uge? (gæster, spise ude, vildt)\n"
+    "4) Var der en ret sidste uge, I gerne vil have igen? Så gemmer jeg den som favorit.\n"
     "Svar bare her. Tal gerne ind med mikrofonen på tastaturet eller via Siri (ikke som talebesked)."
 )
 
@@ -59,6 +60,7 @@ TRIN 2: MENUEN (uden priser, men med et prisskøn)
 3. Find retterne på vores opskriftssider (Valdemarsro, Arla, DR Mad, Madens Verden, HelloFresh,
    Årstiderne). Søg på nettet og hent dem med hent_opskrift_fra_link, eller tag dem fra
    vis_opskrifter. Brug det, vi har hjemme, først. Ram profilen og det, vi plejer at købe.
+   Tag 1-2 af vores FAVORITTER med (se nedenfor), og marker dem med ★ i menuen.
    Brug vores egne varer (fx vildt fra fryseren) præcis som vi sagde: siger vi "rådyr
    lørdag", så kun lørdag, også selvom der er mere (fundet i en test: rådyr kom også tirsdag).
    De faste måltider i profilen (fx morgenmad og weekendfrokost) hører med hver uge og regnes
@@ -159,6 +161,22 @@ Sådan fordeles de (brug koebsmoenster → basisvarer_pr_type og svaret om køle
 - Mængden tæller: skal ugen bruge meget (fx 10 æg), så Køber, også selvom den er købt for nylig.
 - Retter vi listerne, så følg det i indkøbslisten, og gem et "har altid" i profilen som et
   vareønske (fx "Salt, peber, olie: har vi altid").
+
+FAVORITTER (vis_opskrifter = vores samling af retter, vi kan lide)
+- I menuen: tag 1-2 favoritter, der passer til ugen (dage, tid, gæster, profilen), helst dem
+  med ældst `sidst_brugt` (eller aldrig brugt). Ikke en, der var med de sidste 14 dage, medmindre
+  vi beder om den. Hent opskriften med hent_opskrift_fra_link(link), så mængderne passer. Er
+  samlingen tom, så spring det over og nævn det ikke.
+- Gem ugens opskriftslinks med planen: gem_madplan valg={"opskrifter": {"Tir: Lasagne": "https://…"}},
+  så en ret kan blive favorit bagefter.
+- Ny favorit: siger vi, at en ret var god, skal være favorit eller skal laves igen (også som svar
+  på spørgsmål 4), så find retten i den seneste plan (vis_madplan, feltet `opskrifter` giver
+  linket), hent ingredienserne med hent_opskrift_fra_link og gem med gem_opskrift(navn, link,
+  ingredienser, personer, tags fx ["hverdag"] eller ["weekend", "gæster"]). Navnet skal være
+  kort og genkendeligt, fx "Lasagne", så den kan findes i menuer. Gem kun det, vi beder om.
+- "Ikke igen" om en ret: læg den i profilens undgaa som "ret: <navn>", og fjern den fra
+  samlingen med fjern_opskrift, hvis den står der.
+- Nævn ikke, at du har gemt en favorit, medmindre vi spørger (ligesom ØNSKER TIL FREMOVER).
 
 ØNSKER TIL FREMOVER (gælder hele forløbet)
 - Siger husstanden på nogen måde, at noget skal huskes til fremover ("husk", "fra nu af",

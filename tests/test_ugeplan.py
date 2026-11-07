@@ -136,3 +136,12 @@ async def test_forloebet_tjekker_usikre_match_foer_butiksvalg(tg):
     kobl_paa(1)
     f = (await server.ugeplan_forloeb())["forloeb"]
     assert "tjek_foerst" in f and "søg efter gode erstatninger netop dér" in f
+
+
+async def test_forloebet_bruger_favoritter(tg):
+    kobl_paa(1)
+    svar = await server.ugeplan_forloeb()
+    assert "4) Var der en ret sidste uge" in tg[0][1]
+    f = svar["forloeb"]
+    assert "FAVORITTER" in f and "sidst_brugt" in f and "★" in f and "gem_opskrift" in f
+    assert '"opskrifter"' in f and "Er\n  samlingen tom, så spring det over" in f

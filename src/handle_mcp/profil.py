@@ -35,6 +35,7 @@ class Profil:
 HUSKEORD = re.compile(
     r"\b(husk\w*|gem|profil\w*|indstilling\w*|fremover|fremadrettet|i fremtiden|for fremtiden|eftertiden|"
     r"fra nu af|altid|aldrig|næste gang|hver gang|en anden gang|generelt|permanent|"
+    r"favorit\w*|(?:have|lave|laves|få) (?:\w+ ){0,2}igen|ikke igen|var (?:rigtig |meget |virkelig )?god|"
     r"vi (?:kan ikke lide|kan godt lide|elsker|hader|foretrækker|gider ikke|vil ikke|vil kun|spiser ikke|spiser kun))\b",
     re.I,
 )
